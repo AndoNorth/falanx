@@ -1,0 +1,9 @@
+services:
+  falanx-engine:
+    image: falanx/engine:latest
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # Uncomment when falanx-engine exposes a port:
+    # ports:
+    #   - "8080:8080"

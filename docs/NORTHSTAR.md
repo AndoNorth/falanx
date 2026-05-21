@@ -51,6 +51,18 @@ A validation step — confirming rewritten code passes linting, formatting, and 
 
 This is a forward-looking tool. The primary use case is pre-merge quality review, not retroactive codebase improvement. That may change after real usage, but scope creep starts here.
 
+## Inspirations
+
+Below are the key sources of inspiration for this project, should be used as reference when directing features
+
+AFK Software Factory - https://github.com/mattpocock/sandcastle
+
+- Composable sandboxed coding agents
+
+Automated PR review workflows - https://github.com/greptileai/skills
+
+- wrapper to closed source tool we are replicating
+
 ---
 
 *If everything else disappears, this remains true: focused agents, traceable changes, no rewrite without critique.*

@@ -10,34 +10,48 @@ Built in Rust. Developer-triggered. Fast, composable, auditable.
 
 ### Prerequisites
 
-- Rust 1.78+
-- `cargo`
-- An LLM provider API key (Anthropic, OpenAI, or Ollama)
+- [Nix](https://nixos.org/download/) with flakes enabled
+- [direnv](https://direnv.net/) with shell hook configured
 
-### Install
-
-```bash
-cargo install falanx
-```
-
-Or build from source:
+### Setup
 
 ```bash
 git clone <repository-url>
-cd falanx
-cargo build --release
+cd falanx 
+direnv allow
 ```
 
-### Configure
+That's it. Nix provisions the exact Rust toolchain, tools, and dependencies. No manual `cargo install` or toolchain management needed.
 
-Create a `.env` file in your project root:
+### Configure API keys
+
+Copy the example env file and fill in your values:
+
+```bash
+cp example.env.local .env.local
+```
+
+Edit `.env.local`:
 
 ```env
-ANTHROPIC_API_KEY="sk-ant-xxxxxxxxxxxxxxxxxxxx"
-LLM_MODEL="claude-sonnet-4-6"
+# Required
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
+
+# Optional
+OPENAI_API_KEY=
+OLLAMA_HOST=http://localhost:11434
 ```
 
-CLI args override `.env` values at invocation time.
+`.env.local` is gitignored and loaded automatically by direnv. Never commit it.
+
+### Dev commands
+
+Available in the nix shell:
+
+| Command | What it does |
+|---|---|
+| `validate` | `cargo fmt --check` + `cargo clippy` + `cargo nextest run` |
+| `validate-full` | `validate` + `cargo audit` (CVE check) |
 
 ---
 
@@ -118,6 +132,6 @@ Overall:         3.8/5
 
 ## Further Reading
 
-- [Architecture](docs/ARCHITECTURE.md) — deployment modes, context management, session model, serve mode
 - [Northstar](docs/NORTHSTAR.md) — vision, quality philosophy, core promises
+- [Architecture](docs/ARCHITECTURE.md) — deployment modes, context management, session model, serve mode
 - [Agents](docs/AGENTS.md) — agent pipeline, roles, and behavioural contracts

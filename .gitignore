@@ -2,3 +2,23 @@
 .claude/cache/
 .claude/tmp/
 .claude/sessions/
+
+# Local env — API keys, never commit
+.env.local
+
+# Rust build artifacts — https://github.com/github/gitignore/blob/main/Rust.gitignore
+debug/
+target/
+**/*.rs.bk
+*.pdb
+**/mutants.out*/
+
+# Nix build results
+result
+
+# Nix/direnv cache
+.direnv/
+.nix-cache/
+
+# macOS
+.DS_Store
