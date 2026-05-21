@@ -1,0 +1,4 @@
+# Runtime/cache only
+.claude/cache/
+.claude/tmp/
+.claude/sessions/
