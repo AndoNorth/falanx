@@ -109,7 +109,7 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
             }
         }
 
-        prev_score = Some(current_score);
+        prev_score = Some(new_score.clone());
         current_score = new_score;
     }
 
