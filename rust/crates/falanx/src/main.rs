@@ -148,18 +148,16 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     })?;
     info!(composite = score.composite(), iterations = 1, "run completed");
 
-    // Print report
-    println!("falanx score report");
-    println!("-------------------");
-    println!("readability:     {}/5", score.readability);
-    println!("maintainability: {}/5", score.maintainability);
-    println!("performance:     {}/5", score.performance);
-    println!("security:        {}/5", score.security);
-    println!("architecture:    {}/5", score.architecture);
-    println!("-------------------");
-    println!("composite:       {:.1}/5", score.composite());
-    println!();
-    println!("session: {}", session.path().display());
+    tracing::info!(
+        readability = score.readability,
+        maintainability = score.maintainability,
+        performance = score.performance,
+        security = score.security,
+        architecture = score.architecture,
+        composite = score.composite(),
+        session = %session.path().display(),
+        "score report"
+    );
 
     Ok(())
 }
