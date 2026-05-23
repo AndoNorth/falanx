@@ -200,8 +200,9 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     let provider: Box<dyn cersei_provider::Provider> = if cfg.provider.dry_run {
         Box::new(MockProvider)
     } else {
-        // Live path — will be implemented in Task 8
-        anyhow::bail!("live provider not yet implemented — use --dry-run")
+        let (p, _) = cersei_provider::from_model_string(&cfg.provider.model)
+            .map_err(|e| anyhow::anyhow!("provider error: {}", e))?;
+        p
     };
 
     let agent = cersei_agent::Agent::builder()
