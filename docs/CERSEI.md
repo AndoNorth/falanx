@@ -452,6 +452,8 @@ impl JsonlMemory {
 - `MockProvider` must implement all `Provider` trait methods with `#[async_trait]`; only `complete` needs a real body (the default `complete_blocking` calls `complete + collect`)
 - Hooks are registered as `Arc<dyn Hook>` — the builder's `.hook()` wraps in `Arc` automatically
 - `HookContext.event` carries the event type inside the context struct — `on_event` does NOT take a separate `event` parameter
+- `provider_boxed(p: Box<dyn Provider>)` **consumes** the box — there is no `Arc<dyn Provider>` support on AgentBuilder. For pipelines that build multiple agents, reconstruct a fresh provider per agent call via a factory function
+- `MockProvider::response_for` dispatches on `request.system` (the agent system prompt). When no system prompt is set on the builder, the agent runner puts the user prompt in `request.messages`, so routing logic must fall back to checking the last user message text if system is empty
 
 ---
 
