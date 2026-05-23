@@ -45,6 +45,7 @@ impl Session {
         let id = SessionId(uuid::Uuid::new_v4().to_string());
         let path = session_dir.join(format!("{}.jsonl", id.0));
 
+        tracing::info!(session_id = %id.0, path = %path.display(), "session created");
         Ok(Self { path, id })
     }
 

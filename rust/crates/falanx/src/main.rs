@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use tracing::info;
 use falanx_engine::{
     agents::{self, AgentContext},
     config::FalanxConfig,
@@ -71,6 +72,10 @@ struct CommonArgs {
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     let args = Cli::parse();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -83,15 +88,15 @@ async fn run(args: Cli) -> anyhow::Result<()> {
     match args.command {
         Commands::Score(args) => cmd_score(args).await,
         Commands::Review(_) => {
-            eprintln!("falanx review: not yet implemented — planned for Phase 1C");
+            tracing::warn!("falanx review: not yet implemented — planned for Phase 1C");
             std::process::exit(1);
         }
         Commands::ListSessions => {
-            eprintln!("falanx list-sessions: not yet implemented — planned for Phase 1C");
+            tracing::warn!("falanx list-sessions: not yet implemented — planned for Phase 1C");
             std::process::exit(1);
         }
         Commands::Serve(_) => {
-            eprintln!("falanx serve: not yet implemented — planned for Phase 1E");
+            tracing::warn!("falanx serve: not yet implemented — planned for Phase 1E");
             std::process::exit(0);
         }
     }
@@ -115,18 +120,22 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
         session_id: session.id().0.clone(),
         target: label.clone(),
     })?;
+    info!(session_id = %session.id().0, target = %label, "run started");
 
     // Extract diff
     let diff = target.extract_diff()?;
+    info!(bytes = diff.0.len(), "diff extracted");
 
     // Run quality agent
     session.append(SessionEvent::AgentInvoked {
         agent: "quality".into(),
         iteration: 0,
     })?;
+    info!(agent = "quality", iteration = 0, "agent invoked");
 
     let ctx = AgentContext { config: &cfg, diff: &diff };
     let score = agents::quality::score(&ctx).await?;
+    info!(composite = score.composite(), "score computed");
 
     session.append(SessionEvent::ScoreComputed {
         score: score.clone(),
@@ -137,6 +146,7 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
         final_score: score.clone(),
         iterations: 1,
     })?;
+    info!(composite = score.composite(), iterations = 1, "run completed");
 
     // Print report
     println!("falanx score report");

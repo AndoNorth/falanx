@@ -3,8 +3,10 @@ use crate::types::ReviewScore;
 
 pub async fn score(ctx: &AgentContext<'_>) -> anyhow::Result<ReviewScore> {
     if ctx.config.provider.dry_run {
+        tracing::debug!(model = %ctx.config.provider.model, "dry-run: returning mock score");
         return Ok(mock_score());
     }
+    tracing::error!(model = %ctx.config.provider.model, "live provider not implemented");
     anyhow::bail!(
         "live provider not yet implemented — use --dry-run. \
          Cersei integration is planned for Phase 1C."
