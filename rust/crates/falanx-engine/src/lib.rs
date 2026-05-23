@@ -1,3 +1,4 @@
+pub mod audit_hook;
 pub mod agents;
 pub mod config;
 pub mod git;
