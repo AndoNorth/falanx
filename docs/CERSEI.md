@@ -56,11 +56,33 @@ Source: https://github.com/pacifio/cersei
 - **OpenAI-compatible** — covers Ollama, Azure, vLLM, LiteLLM
 - **Custom** — implement the `Provider` trait
 
----
-
-## Agent API (from README examples)
+### `Provider` Trait (cersei-provider v0.1.9)
 
 ```rust
+// async methods via async-trait
+pub trait Provider: Send + Sync {
+    fn name(&self) -> &str;
+    fn context_window(&self, model: &str) -> u64;
+    fn capabilities(&self, model: &str) -> ProviderCapabilities;
+
+    // Required: streaming completion
+    async fn complete(&self, request: CompletionRequest) -> Result<CompletionStream>;
+
+    // Provided with defaults:
+    async fn complete_blocking(&self, request: CompletionRequest) -> Result<CompletionResponse>;
+    async fn count_tokens(&self, ...) -> Result<u64>;  // approximate if unsupported
+}
+```
+
+Constructor: `cersei_provider::from_model_string(model_str, api_key, base_url)` — parses
+`"provider/model"` strings (e.g. `"opencode/big-pickle"`) and returns `Box<dyn Provider>`.
+
+---
+
+## Agent API
+
+```rust
+// cersei-agent
 Agent::builder()
     .provider(Anthropic::from_env()?)
     .tools(cersei::tools::coding())
@@ -73,20 +95,58 @@ Agent::builder()
 ```
 
 Execution modes:
-- `.run_with(prompt)` — single-turn execution, returns final response
-- `.run_stream(prompt)` — bidirectional stream with real-time control
+- `.run_with(prompt)` — single-turn execution, returns `AgentOutput` (final response)
+- `.run_stream(prompt)` — `AgentStream`: async event iterator with bidirectional control
 - `.enable_broadcast(channel_size)` — multi-consumer event distribution
+
+Key types:
+- `Agent` — built via `AgentBuilder`
+- `AgentOutput` — result of `.run_with()`; contains final response text
+- `AgentStream` — async event iterator for streaming mode
+- `AgentEvent` — event types during execution
+- `Reporter` — trait for consuming agent events
 
 ---
 
-## Session / Memory API (from README examples)
+## Hooks API (cersei-hooks v0.1.9)
+
+The hook/middleware system intercepts agent lifecycle events.
+
+```rust
+// Key types (verify exact signatures against cersei-hooks source before implementing)
+pub trait Hook: Send + Sync {
+    async fn on_event(&self, ctx: &HookContext, event: &HookEvent) -> HookAction;
+}
+
+pub struct HookContext { /* carries run context */ }
+
+pub enum HookEvent {
+    // variants include pre/post tool use, model turns, etc.
+    // ⚠ verify exact variants against cersei-hooks/src/lib.rs before implementing FalanxAuditHook
+}
+
+pub enum HookAction {
+    Continue,   // pass through unchanged
+    Block,      // prevent the action
+    // ... other variants — verify before implementing
+}
+
+// Execute all matching hooks for an event, returns first non-Continue action
+pub fn run_hooks(hooks: &[Box<dyn Hook>], ctx: &HookContext, event: &HookEvent) -> HookAction;
+```
+
+---
+
+## Memory API (cersei-memory v0.1.9)
 
 ```rust
 mm.write_user_message("session-id", Message::user("Hello"))?;
 let messages = mm.load_session_messages("session-id")?;
 ```
 
-JSONL sessions are append-only with tombstone soft-delete. Supports replay and resumption.
+- `InMemory` — in-process backend, suitable for tests (no filesystem)
+- JSONL sessions: append-only with tombstone soft-delete, supports replay/resumption
+- Optional graph memory via `features = ["graph"]` (Grafeo-backed indexed memory)
 
 ---
 
@@ -100,18 +160,6 @@ JSONL sessions are append-only with tombstone soft-delete. Supports replay and r
 
 ---
 
-## Key Dependencies (shared workspace)
-
-- `tokio 1.44` (full) — async runtime
-- `async-trait 0.1` — async trait support
-- `serde` / `serde_json` — serialization
-- `schemars 0.8` — JSON schema generation for tools
-- `reqwest 0.12` — HTTP with rustls-tls
-- `uuid 1`, `chrono 0.4` — IDs and timestamps
-- `anyhow` — error handling
-
----
-
 ## Notes for Falanx Integration
 
 - Cersei agents should be used **per-pipeline-stage** — one agent instance per CodeQualityAgent / CodeReviewAgent / CodeWritingAgent invocation
@@ -119,7 +167,9 @@ JSONL sessions are append-only with tombstone soft-delete. Supports replay and r
 - Horizon reset = discard current Cersei agent instance, construct fresh one with seed context only
 - Cersei's JSONL session files are an implementation detail; Falanx's audit trail is a separate concern at the run level
 - `cersei-mcp` is the client; Falanx serve mode will expose its own MCP **server** — these are distinct
+- `from_model_string()` is in `cersei_provider::router` module — parses `"provider/model"` strings
+- `MockProvider` must implement all four required `Provider` trait methods; only `complete` and `complete_blocking` need real bodies for Falanx use
 
 ---
 
-_To be expanded when the crate is pulled into the workspace._
+_Last updated: 2026-05-23. Hook trait method signatures and HookEvent variants are approximations — verify against cersei-hooks source when pulling crate._
