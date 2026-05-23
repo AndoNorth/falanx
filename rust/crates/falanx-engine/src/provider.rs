@@ -19,10 +19,20 @@ impl MockProvider {
     }
 
     fn response_for(request: &CompletionRequest) -> &'static str {
+        // Check system prompt first, then fall back to last user message content.
+        // Agents set the stage keyword in the user prompt, not the system prompt.
         let system = request.system.as_deref().unwrap_or("");
-        if system.contains("SCORE") {
+        let user_text = request
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == cersei_types::Role::User)
+            .and_then(|m| m.get_text())
+            .unwrap_or("");
+        let haystack = if system.is_empty() { user_text } else { system };
+        if haystack.contains("SCORE") {
             Self::mock_score_json()
-        } else if system.contains("CRITIQUE") {
+        } else if haystack.contains("CRITIQUE") {
             Self::mock_issues_json()
         } else {
             Self::mock_patches_json()
