@@ -7,6 +7,7 @@ use falanx_engine::{
     agents::{self, AgentContext},
     config::FalanxConfig,
     git::ReviewTarget,
+    provider::MockProvider,
     session::{Session, SessionEvent},
 };
 
@@ -133,7 +134,19 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     })?;
     info!(agent = "quality", iteration = 0, "agent invoked");
 
-    let ctx = AgentContext { config: &cfg, diff: &diff };
+    let provider: Box<dyn cersei_provider::Provider> = if cfg.provider.dry_run {
+        Box::new(MockProvider)
+    } else {
+        // Live path — will be implemented in Task 8
+        anyhow::bail!("live provider not yet implemented — use --dry-run")
+    };
+
+    let agent = cersei_agent::Agent::builder()
+        .provider_boxed(provider)
+        .model(&cfg.provider.model)
+        .build()?;
+
+    let ctx = AgentContext { agent: &agent, diff: &diff };
     let score = agents::quality::score(&ctx).await?;
     info!(composite = score.composite(), "score computed");
 
