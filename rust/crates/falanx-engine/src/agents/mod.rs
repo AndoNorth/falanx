@@ -3,6 +3,6 @@ pub mod review;
 pub mod writing;
 
 pub struct AgentContext<'a> {
-    pub config: &'a crate::config::FalanxConfig,
+    pub agent: &'a cersei_agent::Agent,
     pub diff: &'a crate::git::Diff,
 }
