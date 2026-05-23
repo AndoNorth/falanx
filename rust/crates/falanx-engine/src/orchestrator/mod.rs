@@ -1,11 +1,16 @@
 pub mod horizon;
 pub mod pipeline;
 
-use crate::{config::FalanxConfig, git::ReviewTarget, session::Session,
-            types::{RewritePatch, ReviewScore, SessionId}};
+use crate::{
+    config::{FalanxConfig, LoopConfig},
+    git::ReviewTarget,
+    session::Session,
+    types::{RewritePatch, ReviewScore, SessionId},
+};
 
 pub struct RunConfig {
     pub target: ReviewTarget,
+    pub loop_cfg: LoopConfig,
     pub session: Session,
 }
 
@@ -16,6 +21,6 @@ pub struct RunResult {
     pub session_id: SessionId,
 }
 
-pub async fn run(_config: RunConfig, _falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
-    anyhow::bail!("Orchestrator not yet implemented — planned for Phase 1C")
+pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
+    pipeline::run(config, falanx_cfg).await
 }
