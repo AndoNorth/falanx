@@ -4,6 +4,7 @@ use std::path::PathBuf;
 pub struct FalanxConfig {
     pub provider: ProviderConfig,
     pub session: SessionConfig,
+    pub loop_cfg: LoopConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,19 @@ pub struct ProviderConfig {
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
     pub dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopConfig {
+    pub max_iter: u32,
+    pub target_score: f32,
+    pub plateau_threshold: f32,
+}
+
+impl Default for LoopConfig {
+    fn default() -> Self {
+        Self { max_iter: 3, target_score: 4.5, plateau_threshold: 0.1 }
+    }
 }
 
 impl FalanxConfig {
@@ -44,9 +58,25 @@ impl FalanxConfig {
                     .join("sessions")
             });
 
+        let max_iter = std::env::var("FALANX_MAX_ITER")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3u32);
+
+        let target_score = std::env::var("FALANX_TARGET_SCORE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4.5f32);
+
+        let plateau_threshold = std::env::var("FALANX_PLATEAU_THRESHOLD")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.1f32);
+
         Ok(Self {
             provider: ProviderConfig { model, api_key, base_url, dry_run },
             session: SessionConfig { dir },
+            loop_cfg: LoopConfig { max_iter, target_score, plateau_threshold },
         })
     }
 
@@ -94,6 +124,7 @@ mod tests {
             session: SessionConfig {
                 dir: PathBuf::from("/tmp/falanx-test"),
             },
+            loop_cfg: LoopConfig::default(),
         };
         assert!(cfg.validate().is_err());
     }
@@ -110,7 +141,34 @@ mod tests {
             session: SessionConfig {
                 dir: PathBuf::from("/tmp/falanx-test"),
             },
+            loop_cfg: LoopConfig::default(),
         };
         assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn loop_config_defaults() {
+        let cfg = LoopConfig::default();
+        assert_eq!(cfg.max_iter, 3);
+        assert!((cfg.target_score - 4.5).abs() < f32::EPSILON);
+        assert!((cfg.plateau_threshold - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn loop_config_from_env_reads_vars() {
+        unsafe {
+            std::env::set_var("FALANX_MAX_ITER", "5");
+            std::env::set_var("FALANX_TARGET_SCORE", "4.0");
+            std::env::set_var("FALANX_PLATEAU_THRESHOLD", "0.05");
+        }
+        let cfg = FalanxConfig::from_env().unwrap();
+        assert_eq!(cfg.loop_cfg.max_iter, 5);
+        assert!((cfg.loop_cfg.target_score - 4.0).abs() < f32::EPSILON);
+        assert!((cfg.loop_cfg.plateau_threshold - 0.05).abs() < f32::EPSILON);
+        unsafe {
+            std::env::remove_var("FALANX_MAX_ITER");
+            std::env::remove_var("FALANX_TARGET_SCORE");
+            std::env::remove_var("FALANX_PLATEAU_THRESHOLD");
+        }
     }
 }

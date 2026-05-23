@@ -40,6 +40,7 @@ mod tests {
             session: SessionConfig {
                 dir: std::path::PathBuf::from("/tmp/falanx-test"),
             },
+            loop_cfg: crate::config::LoopConfig::default(),
         };
         let diff = Diff("fn main() {}".into());
         (cfg, diff)
@@ -76,6 +77,7 @@ mod tests {
             session: SessionConfig {
                 dir: std::path::PathBuf::from("/tmp/falanx-test"),
             },
+            loop_cfg: crate::config::LoopConfig::default(),
         };
         let diff = Diff("fn main() {}".into());
         let ctx = AgentContext { config: &cfg, diff: &diff };
