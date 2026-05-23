@@ -1,0 +1,16 @@
+[package]
+name = "falanx"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "falanx"
+path = "src/main.rs"
+
+[dependencies]
+falanx-engine = { path = "../falanx-engine" }
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
