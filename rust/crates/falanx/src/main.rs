@@ -52,6 +52,12 @@ struct ReviewArgs {
     file: Option<PathBuf>,
     #[arg(long)]
     diff: Option<String>,
+    /// Override max iterations from config
+    #[arg(long)]
+    max_iter: Option<u32>,
+    /// Override target score from config
+    #[arg(long)]
+    target: Option<f32>,
     #[command(flatten)]
     common: CommonArgs,
 }
@@ -88,19 +94,76 @@ fn main() -> anyhow::Result<()> {
 async fn run(args: Cli) -> anyhow::Result<()> {
     match args.command {
         Commands::Score(args) => cmd_score(args).await,
-        Commands::Review(_) => {
-            tracing::warn!("falanx review: not yet implemented — planned for Phase 1C");
-            std::process::exit(1);
-        }
-        Commands::ListSessions => {
-            tracing::warn!("falanx list-sessions: not yet implemented — planned for Phase 1C");
-            std::process::exit(1);
-        }
+        Commands::Review(args) => cmd_review(args).await,
+        Commands::ListSessions => cmd_list_sessions().await,
         Commands::Serve(_) => {
             tracing::warn!("falanx serve: not yet implemented — planned for Phase 1E");
             std::process::exit(0);
         }
     }
+}
+
+async fn cmd_review(args: ReviewArgs) -> anyhow::Result<()> {
+    let mut cfg = FalanxConfig::from_env()?;
+    if args.common.dry_run {
+        cfg.provider.dry_run = true;
+    }
+    if let Some(max_iter) = args.max_iter {
+        cfg.loop_cfg.max_iter = max_iter;
+    }
+    if let Some(target) = args.target {
+        cfg.loop_cfg.target_score = target;
+    }
+    cfg.validate()?;
+
+    let target = resolve_target(args.file, args.diff)?;
+    let label = target_label(&target);
+    let session = falanx_engine::session::Session::new(&cfg.session.dir, &label)?;
+
+    let run_cfg = falanx_engine::orchestrator::RunConfig {
+        target,
+        loop_cfg: cfg.loop_cfg.clone(),
+        session,
+    };
+
+    let result = falanx_engine::orchestrator::run(run_cfg, &cfg).await?;
+
+    tracing::info!(
+        final_score = result.final_score.composite(),
+        iterations = result.iterations,
+        patches = result.patches.len(),
+        session_id = %result.session_id.0,
+        "review complete"
+    );
+
+    Ok(())
+}
+
+async fn cmd_list_sessions() -> anyhow::Result<()> {
+    let cfg = FalanxConfig::from_env()?;
+    let sessions = falanx_engine::session::Session::list(&cfg.session.dir)?;
+
+    if sessions.is_empty() {
+        println!("No sessions found in {}", cfg.session.dir.display());
+        return Ok(());
+    }
+
+    println!("{:<38} {:<24} {:<8} {}", "SESSION ID", "STARTED", "SCORE", "ITERATIONS");
+    for meta in &sessions {
+        let score = meta.final_score.as_ref()
+            .map(|s| format!("{:.1}", s.composite()))
+            .unwrap_or_else(|| "-".into());
+        let iters = meta.iterations.map(|i| i.to_string()).unwrap_or_else(|| "-".into());
+        println!(
+            "{:<38} {:<24} {:<8} {}",
+            meta.id.0,
+            meta.started_at.format("%Y-%m-%d %H:%M:%S UTC"),
+            score,
+            iters,
+        );
+    }
+
+    Ok(())
 }
 
 async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
