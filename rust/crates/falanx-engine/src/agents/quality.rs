@@ -4,6 +4,7 @@ use crate::types::ReviewScore;
 pub async fn score(ctx: &AgentContext<'_>) -> anyhow::Result<ReviewScore> {
     let prompt = build_score_prompt(&ctx.diff.0);
     let output = ctx.agent.run(&prompt).await?;
+    tracing::debug!(response = output.text(), "quality agent raw response");
     parse_score_response(output.text())
 }
 
@@ -19,7 +20,7 @@ fn build_score_prompt(diff: &str) -> String {
 }
 
 fn parse_score_response(text: &str) -> anyhow::Result<ReviewScore> {
-    let start = text.find('{').ok_or_else(|| anyhow::anyhow!("no JSON in score response"))?;
+    let start = text.find("{\"").ok_or_else(|| anyhow::anyhow!("no JSON in score response"))?;
     let end = text.rfind('}').ok_or_else(|| anyhow::anyhow!("no JSON end in score response"))?;
     let json = &text[start..=end];
     Ok(serde_json::from_str(json)?)

@@ -197,17 +197,17 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     })?;
     info!(agent = "quality", iteration = 0, "agent invoked");
 
-    let provider: Box<dyn cersei_provider::Provider> = if cfg.provider.dry_run {
-        Box::new(MockProvider)
+    let (provider, model_id): (Box<dyn cersei_provider::Provider>, String) = if cfg.provider.dry_run {
+        (Box::new(MockProvider), cfg.provider.model.clone())
     } else {
-        let (p, _) = cersei_provider::from_model_string(&cfg.provider.model)
+        let (p, model_id) = cersei_provider::from_model_string(&cfg.provider.model)
             .map_err(|e| anyhow::anyhow!("provider error: {}", e))?;
-        p
+        (p, model_id)
     };
 
     let agent = cersei_agent::Agent::builder()
         .provider_boxed(provider)
-        .model(&cfg.provider.model)
+        .model(&model_id)
         .build()?;
 
     let ctx = AgentContext { agent: &agent, diff: &diff };
