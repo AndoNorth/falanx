@@ -9,20 +9,20 @@ use crate::{
     types::RewritePatch,
 };
 
-fn build_provider(falanx_cfg: &FalanxConfig) -> anyhow::Result<Box<dyn cersei_provider::Provider>> {
+fn build_provider(falanx_cfg: &FalanxConfig) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
     if falanx_cfg.provider.dry_run {
-        Ok(Box::new(MockProvider))
+        Ok((Box::new(MockProvider), falanx_cfg.provider.model.clone()))
     } else {
-        let (p, _) = cersei_provider::from_model_string(&falanx_cfg.provider.model)?;
-        Ok(p)
+        let (p, model_id) = cersei_provider::from_model_string(&falanx_cfg.provider.model)?;
+        Ok((p, model_id))
     }
 }
 
 fn build_agent(falanx_cfg: &FalanxConfig) -> anyhow::Result<Agent> {
-    let provider = build_provider(falanx_cfg)?;
+    let (provider, model_id) = build_provider(falanx_cfg)?;
     Agent::builder()
         .provider_boxed(provider)
-        .model(&falanx_cfg.provider.model)
+        .model(&model_id)
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build agent: {}", e))
 }
