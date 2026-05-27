@@ -1,3 +1,6 @@
+pub mod config;
+pub use config::ScoringConfig;
+
 use super::AgentContext;
 use crate::types::ReviewScore;
 
