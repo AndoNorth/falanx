@@ -1,6 +1,7 @@
 pub mod config;
 pub use config::ScoringConfig;
 mod synthesis;
+pub mod pipeline;
 
 use super::AgentContext;
 use crate::types::ReviewScore;
