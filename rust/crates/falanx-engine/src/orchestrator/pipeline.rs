@@ -1,37 +1,13 @@
-use cersei_agent::Agent;
-
 use crate::{
     agents::{self, AgentContext},
+    agents::quality::ScoringConfig,
     config::FalanxConfig,
     orchestrator::{horizon::HorizonState, RunConfig, RunResult},
     provider::MockProvider,
     session::SessionEvent,
     types::{RewritePatch, ScoringResult},
 };
-
-// TODO Task 19: remove this shim once score() callers are updated
-async fn legacy_score_shim(ctx: &AgentContext<'_>) -> anyhow::Result<ScoringResult> {
-    let prompt = format!(
-        "SCORE this diff across five categories: readability, maintainability, \
-         performance, security, architecture. Each score 1-5 (integer). \
-         Respond with JSON only, no prose:\n\
-         {{\"readability\":N,\"maintainability\":N,\"performance\":N,\
-         \"security\":N,\"architecture\":N}}\n\nDIFF:\n{}",
-        ctx.diff.0
-    );
-    let output = ctx.agent.run(&prompt).await?;
-    let text = output.text();
-    let start = text.find("{\"").ok_or_else(|| anyhow::anyhow!("no JSON in score response"))?;
-    let end = text.rfind('}').ok_or_else(|| anyhow::anyhow!("no JSON end in score response"))?;
-    let json = &text[start..=end];
-    let raw: crate::types::ReviewScore = serde_json::from_str(json)?;
-    Ok(ScoringResult {
-        pipeline_name: "legacy".into(),
-        categories: vec![],
-        composite_score: raw.composite(),
-        synthesis: String::new(),
-    })
-}
+use cersei_agent::Agent;
 
 fn build_provider(falanx_cfg: &FalanxConfig) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
     if falanx_cfg.provider.dry_run {
@@ -55,7 +31,32 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
     let RunConfig { target, loop_cfg, session } = config;
     let session_id = session.id().clone();
 
+    let scoring_cfg = ScoringConfig::load()
+        .map_err(|e| anyhow::anyhow!("failed to load scoring config: {}", e))?;
+
+    tracing::info!(
+        pipeline = %scoring_cfg.pipeline.name,
+        categories = scoring_cfg.pipeline.categories.len(),
+        "scoring config loaded"
+    );
+
     let diff = target.extract_diff()?;
+
+    let max_diff_chars: usize = std::env::var("FALANX_MAX_DIFF_CHARS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20_000);
+
+    let diff = if diff.0.len() > max_diff_chars {
+        tracing::warn!(
+            original_chars = diff.0.len(),
+            truncated_to = max_diff_chars,
+            "diff exceeds FALANX_MAX_DIFF_CHARS — truncating"
+        );
+        crate::git::Diff(diff.0[..max_diff_chars].to_string())
+    } else {
+        diff
+    };
 
     session.append(SessionEvent::RunStarted {
         session_id: session_id.0.clone(),
@@ -64,17 +65,14 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
 
     let mut horizon = HorizonState::new();
     let mut iteration: u32 = 0;
-    let mut prev_score = None;
+    let mut prev_score: Option<ScoringResult> = None;
     let mut all_patches: Vec<RewritePatch> = vec![];
     let mut plateau_streak: u32 = 0;
 
     // Initial score
     let mut current_score = {
         session.append(SessionEvent::AgentInvoked { agent: "quality".into(), iteration })?;
-        let agent = build_agent(falanx_cfg)?;
-        let ctx = AgentContext { agent: &agent, diff: &diff };
-        // TODO Task 19: replace with new score() signature
-        legacy_score_shim(&ctx).await?
+        agents::quality::score(&diff, falanx_cfg, &scoring_cfg, &session, iteration).await?
     };
 
     loop {
@@ -105,10 +103,7 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
 
         // Re-score
         session.append(SessionEvent::AgentInvoked { agent: "quality".into(), iteration })?;
-        let agent = build_agent(falanx_cfg)?;
-        let ctx = AgentContext { agent: &agent, diff: &diff };
-        // TODO Task 19: replace with new score() signature
-        let new_score = legacy_score_shim(&ctx).await?;
+        let new_score = agents::quality::score(&diff, falanx_cfg, &scoring_cfg, &session, iteration).await?;
 
         // Plateau check
         let is_plateau = prev_score
@@ -128,7 +123,7 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
                 plateau_streak = 0;
                 session.append(SessionEvent::HorizonReset { iteration })?;
             } else {
-                break; // exhausted resets
+                break;
             }
         }
 
@@ -192,5 +187,7 @@ mod tests {
         let result = run(run_cfg, &cfg).await.unwrap();
         assert_eq!(result.iterations, 1);
         assert!(result.final_score.composite() > 0.0);
+        // With new pipeline, categories should be populated
+        assert!(!result.final_score.categories.is_empty());
     }
 }
