@@ -9,6 +9,30 @@ use crate::{
     types::{RewritePatch, ScoringResult},
 };
 
+// TODO Task 19: remove this shim once score() callers are updated
+async fn legacy_score_shim(ctx: &AgentContext<'_>) -> anyhow::Result<ScoringResult> {
+    let prompt = format!(
+        "SCORE this diff across five categories: readability, maintainability, \
+         performance, security, architecture. Each score 1-5 (integer). \
+         Respond with JSON only, no prose:\n\
+         {{\"readability\":N,\"maintainability\":N,\"performance\":N,\
+         \"security\":N,\"architecture\":N}}\n\nDIFF:\n{}",
+        ctx.diff.0
+    );
+    let output = ctx.agent.run(&prompt).await?;
+    let text = output.text();
+    let start = text.find("{\"").ok_or_else(|| anyhow::anyhow!("no JSON in score response"))?;
+    let end = text.rfind('}').ok_or_else(|| anyhow::anyhow!("no JSON end in score response"))?;
+    let json = &text[start..=end];
+    let raw: crate::types::ReviewScore = serde_json::from_str(json)?;
+    Ok(ScoringResult {
+        pipeline_name: "legacy".into(),
+        categories: vec![],
+        composite_score: raw.composite(),
+        synthesis: String::new(),
+    })
+}
+
 fn build_provider(falanx_cfg: &FalanxConfig) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
     if falanx_cfg.provider.dry_run {
         Ok((Box::new(MockProvider), falanx_cfg.provider.model.clone()))
@@ -49,15 +73,8 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
         session.append(SessionEvent::AgentInvoked { agent: "quality".into(), iteration })?;
         let agent = build_agent(falanx_cfg)?;
         let ctx = AgentContext { agent: &agent, diff: &diff };
-        let s = agents::quality::score(&ctx).await?;
-        // ScoreComputed removed — ScoringComplete emitted inside quality::score()
         // TODO Task 19: replace with new score() signature
-        ScoringResult {
-            pipeline_name: "default".into(),
-            categories: vec![],
-            composite_score: s.composite(),
-            synthesis: String::new(),
-        }
+        legacy_score_shim(&ctx).await?
     };
 
     loop {
@@ -90,15 +107,8 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
         session.append(SessionEvent::AgentInvoked { agent: "quality".into(), iteration })?;
         let agent = build_agent(falanx_cfg)?;
         let ctx = AgentContext { agent: &agent, diff: &diff };
-        let new_score_raw = agents::quality::score(&ctx).await?;
-        // ScoreComputed removed — ScoringComplete emitted inside quality::score()
         // TODO Task 19: replace with new score() signature
-        let new_score = ScoringResult {
-            pipeline_name: "default".into(),
-            categories: vec![],
-            composite_score: new_score_raw.composite(),
-            synthesis: String::new(),
-        };
+        let new_score = legacy_score_shim(&ctx).await?;
 
         // Plateau check
         let is_plateau = prev_score
