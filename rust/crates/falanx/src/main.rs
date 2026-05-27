@@ -214,13 +214,13 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     let score = agents::quality::score(&ctx).await?;
     info!(composite = score.composite(), "score computed");
 
-    session.append(SessionEvent::ScoreComputed {
-        score: score.clone(),
-        iteration: 0,
-    })?;
-
     session.append(SessionEvent::RunCompleted {
-        final_score: score.clone(),
+        final_score: falanx_engine::types::ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: score.composite(),
+            synthesis: String::new(),
+        },
         iterations: 1,
     })?;
     info!(composite = score.composite(), iterations = 1, "run completed");

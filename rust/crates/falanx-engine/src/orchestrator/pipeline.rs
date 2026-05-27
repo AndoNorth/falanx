@@ -6,7 +6,7 @@ use crate::{
     orchestrator::{horizon::HorizonState, RunConfig, RunResult},
     provider::MockProvider,
     session::SessionEvent,
-    types::RewritePatch,
+    types::{RewritePatch, ScoringResult},
 };
 
 fn build_provider(falanx_cfg: &FalanxConfig) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
@@ -50,8 +50,14 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
         let agent = build_agent(falanx_cfg)?;
         let ctx = AgentContext { agent: &agent, diff: &diff };
         let s = agents::quality::score(&ctx).await?;
-        session.append(SessionEvent::ScoreComputed { score: s.clone(), iteration })?;
-        s
+        // ScoreComputed removed — ScoringComplete emitted inside quality::score()
+        // TODO Task 19: replace with new score() signature
+        ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: s.composite(),
+            synthesis: String::new(),
+        }
     };
 
     loop {
@@ -68,7 +74,7 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
         session.append(SessionEvent::AgentInvoked { agent: "review".into(), iteration })?;
         let agent = build_agent(falanx_cfg)?;
         let ctx = AgentContext { agent: &agent, diff: &diff };
-        let issues = agents::review::critique(&ctx, &current_score).await?;
+        let issues = agents::review::critique(&ctx, &current_score.composite()).await?;
         session.append(SessionEvent::IssuesFound { count: issues.len(), iteration })?;
 
         if !issues.is_empty() {
@@ -84,8 +90,15 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
         session.append(SessionEvent::AgentInvoked { agent: "quality".into(), iteration })?;
         let agent = build_agent(falanx_cfg)?;
         let ctx = AgentContext { agent: &agent, diff: &diff };
-        let new_score = agents::quality::score(&ctx).await?;
-        session.append(SessionEvent::ScoreComputed { score: new_score.clone(), iteration })?;
+        let new_score_raw = agents::quality::score(&ctx).await?;
+        // ScoreComputed removed — ScoringComplete emitted inside quality::score()
+        // TODO Task 19: replace with new score() signature
+        let new_score = ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: new_score_raw.composite(),
+            synthesis: String::new(),
+        };
 
         // Plateau check
         let is_plateau = prev_score

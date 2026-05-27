@@ -1,22 +1,22 @@
 use super::AgentContext;
-use crate::types::{ReviewIssue, ReviewScore};
+use crate::types::ReviewIssue;
 
 pub async fn critique(
     ctx: &AgentContext<'_>,
-    score: &ReviewScore,
+    composite: &f32,
 ) -> anyhow::Result<Vec<ReviewIssue>> {
-    let prompt = build_critique_prompt(&ctx.diff.0, score);
+    let prompt = build_critique_prompt(&ctx.diff.0, *composite);
     let output = ctx.agent.run(&prompt).await?;
     parse_issues_response(output.text())
 }
 
-fn build_critique_prompt(diff: &str, score: &ReviewScore) -> String {
+fn build_critique_prompt(diff: &str, composite: f32) -> String {
     format!(
         "CRITIQUE this diff. Composite score is {:.1}. Identify concrete issues.\n\
          Respond with JSON array only:\n\
          [{{\"location\":\"file:line\",\"problem\":\"description\",\"fix\":\"suggestion\"}}]\n\
          Return empty array [] if no issues found.\n\nDIFF:\n{}",
-        score.composite(),
+        composite,
         diff
     )
 }
