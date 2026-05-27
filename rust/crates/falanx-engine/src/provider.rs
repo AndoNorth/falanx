@@ -18,6 +18,14 @@ impl MockProvider {
         r#"[]"#
     }
 
+    fn mock_category_json() -> &'static str {
+        r#"{"score": 3, "reasoning": "mock category reasoning"}"#
+    }
+
+    fn mock_synthesis_json() -> &'static str {
+        r#"{"overall_score": 3, "summary": "mock synthesis summary"}"#
+    }
+
     fn response_for(request: &CompletionRequest) -> &'static str {
         // Check system prompt first, then fall back to last user message content.
         // Agents set the stage keyword in the user prompt, not the system prompt.
@@ -29,6 +37,18 @@ impl MockProvider {
             .find(|m| m.role == cersei_types::Role::User)
             .and_then(|m| m.get_text())
             .unwrap_or("");
+
+        // New scoring pipeline routing — check system prompt first
+        if system.contains("code quality reviewer") {
+            return Self::mock_category_json();
+        }
+
+        // Synthesis agent — no system prompt, check user message
+        if user_text.contains("synthesising") {
+            return Self::mock_synthesis_json();
+        }
+
+        // Legacy routing for review + rewrite agents
         let haystack = if system.is_empty() { user_text } else { system };
         if haystack.contains("SCORE") {
             Self::mock_score_json()

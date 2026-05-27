@@ -1,5 +1,6 @@
 pub mod config;
 pub use config::ScoringConfig;
+mod synthesis;
 
 use super::AgentContext;
 use crate::types::ReviewScore;
