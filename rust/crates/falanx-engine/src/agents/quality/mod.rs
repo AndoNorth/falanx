@@ -83,8 +83,10 @@ fn build_provider(
 mod tests {
     use super::*;
     use crate::config::{FalanxConfig, LoopConfig, ProviderConfig, SessionConfig};
+    use serial_test::serial;
 
     #[tokio::test]
+    #[serial]
     async fn score_runs_full_pipeline_with_mock_provider() {
         let dir = tempfile::tempdir().unwrap();
         let session = Session::new(dir.path(), "test").unwrap();

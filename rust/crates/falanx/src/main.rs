@@ -184,6 +184,22 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     let diff = target.extract_diff()?;
     info!(bytes = diff.0.len(), "diff extracted");
 
+    let max_diff_chars: usize = std::env::var("FALANX_MAX_DIFF_CHARS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20_000);
+
+    let diff = if diff.0.len() > max_diff_chars {
+        tracing::warn!(
+            original_chars = diff.0.len(),
+            truncated_to = max_diff_chars,
+            "diff exceeds FALANX_MAX_DIFF_CHARS — truncating"
+        );
+        falanx_engine::git::Diff(diff.0.chars().take(max_diff_chars).collect())
+    } else {
+        diff
+    };
+
     let scoring_cfg = falanx_engine::agents::quality::ScoringConfig::load()?;
 
     session.append(SessionEvent::AgentInvoked {

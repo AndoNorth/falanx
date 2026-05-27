@@ -16,6 +16,13 @@ pub async fn run_categories(
     session: &Session,
     iteration: u32,
 ) -> anyhow::Result<Vec<CategoryResult>> {
+    if pipeline.parallel {
+        tracing::warn!(
+            pipeline = %pipeline.name,
+            "parallel category execution is not yet implemented — running sequentially"
+        );
+    }
+
     let mut results = Vec::with_capacity(pipeline.categories.len());
 
     for cat_name in &pipeline.categories {
@@ -93,10 +100,10 @@ fn parse_category_response(text: &str) -> anyhow::Result<(u8, String)> {
 }
 
 fn truncate_reasoning(reasoning: String, max_chars: usize) -> String {
-    if reasoning.len() <= max_chars {
+    if reasoning.chars().count() <= max_chars {
         reasoning
     } else {
-        reasoning[..max_chars].to_string()
+        reasoning.chars().take(max_chars).collect()
     }
 }
 

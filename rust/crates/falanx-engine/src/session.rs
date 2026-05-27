@@ -288,7 +288,8 @@ mod tests {
 
     #[test]
     fn category_scored_event_serialises() {
-        let session = Session::new(&std::path::PathBuf::from("/tmp/falanx-test-events"), "test").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "test").unwrap();
         session.append(SessionEvent::CategoryScored {
             category: "security".into(),
             score: 2,
@@ -303,7 +304,8 @@ mod tests {
 
     #[test]
     fn scoring_complete_event_serialises() {
-        let session = Session::new(&std::path::PathBuf::from("/tmp/falanx-test-events"), "test2").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "test2").unwrap();
         session.append(SessionEvent::ScoringComplete {
             pipeline_name: "default".into(),
             composite_score: 3.5,

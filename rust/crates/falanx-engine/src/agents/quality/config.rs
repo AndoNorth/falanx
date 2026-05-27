@@ -87,6 +87,7 @@ impl ScoringConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn category_config_deserialises_from_yaml() {
@@ -116,6 +117,7 @@ default:
     }
 
     #[test]
+    #[serial]
     fn scoring_config_loads_embedded_defaults() {
         unsafe {
             std::env::remove_var("FALANX_SCORING_CATEGORIES_CONFIG");
@@ -130,6 +132,7 @@ default:
     }
 
     #[test]
+    #[serial]
     fn scoring_config_selects_quick_pipeline() {
         unsafe {
             std::env::remove_var("FALANX_SCORING_CATEGORIES_CONFIG");
@@ -143,6 +146,7 @@ default:
     }
 
     #[test]
+    #[serial]
     fn scoring_config_rejects_unknown_pipeline() {
         unsafe {
             std::env::remove_var("FALANX_SCORING_CATEGORIES_CONFIG");
@@ -155,6 +159,7 @@ default:
     }
 
     #[test]
+    #[serial]
     fn scoring_config_rejects_pipeline_with_unknown_category() {
         let dir = tempfile::tempdir().unwrap();
         let cats_path = dir.path().join("cats.yaml");

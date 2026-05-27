@@ -53,7 +53,7 @@ pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result
             truncated_to = max_diff_chars,
             "diff exceeds FALANX_MAX_DIFF_CHARS — truncating"
         );
-        crate::git::Diff(diff.0[..max_diff_chars].to_string())
+        crate::git::Diff(diff.0.chars().take(max_diff_chars).collect())
     } else {
         diff
     };
