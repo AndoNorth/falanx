@@ -4,10 +4,8 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use tracing::info;
 use falanx_engine::{
-    agents::{self, AgentContext},
     config::FalanxConfig,
     git::ReviewTarget,
-    provider::MockProvider,
     session::{Session, SessionEvent},
 };
 
@@ -167,18 +165,15 @@ async fn cmd_list_sessions() -> anyhow::Result<()> {
 }
 
 async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
-    // Load and patch config
     let mut cfg = FalanxConfig::from_env()?;
     if args.common.dry_run {
         cfg.provider.dry_run = true;
     }
     cfg.validate()?;
 
-    // Resolve review target
     let target = resolve_target(args.file, args.diff)?;
     let label = target_label(&target);
 
-    // Open session
     let session = Session::new(&cfg.session.dir, &label)?;
     session.append(SessionEvent::RunStarted {
         session_id: session.id().0.clone(),
@@ -186,52 +181,37 @@ async fn cmd_score(args: ScoreArgs) -> anyhow::Result<()> {
     })?;
     info!(session_id = %session.id().0, target = %label, "run started");
 
-    // Extract diff
     let diff = target.extract_diff()?;
     info!(bytes = diff.0.len(), "diff extracted");
 
-    // Run quality agent
+    let scoring_cfg = falanx_engine::agents::quality::ScoringConfig::load()?;
+
     session.append(SessionEvent::AgentInvoked {
         agent: "quality".into(),
         iteration: 0,
     })?;
-    info!(agent = "quality", iteration = 0, "agent invoked");
+    info!(agent = "quality", pipeline = %scoring_cfg.pipeline.name, iteration = 0, "scoring started");
 
-    let (provider, model_id): (Box<dyn cersei_provider::Provider>, String) = if cfg.provider.dry_run {
-        (Box::new(MockProvider), cfg.provider.model.clone())
-    } else {
-        let (p, model_id) = cersei_provider::from_model_string(&cfg.provider.model)
-            .map_err(|e| anyhow::anyhow!("provider error: {}", e))?;
-        (p, model_id)
-    };
-
-    let agent = cersei_agent::Agent::builder()
-        .provider_boxed(provider)
-        .model(&model_id)
-        .build()?;
-
-    let ctx = AgentContext { agent: &agent, diff: &diff };
-    let score = agents::quality::score(&ctx).await?;
-    info!(composite = score.composite(), "score computed");
+    let score = falanx_engine::agents::quality::score(&diff, &cfg, &scoring_cfg, &session, 0).await?;
 
     session.append(SessionEvent::RunCompleted {
-        final_score: falanx_engine::types::ScoringResult {
-            pipeline_name: "default".into(),
-            categories: vec![],
-            composite_score: score.composite(),
-            synthesis: String::new(),
-        },
+        final_score: score.clone(),
         iterations: 1,
     })?;
     info!(composite = score.composite(), iterations = 1, "run completed");
 
+    for cat in &score.categories {
+        tracing::info!(
+            category = %cat.name,
+            score = cat.score,
+            reasoning = %cat.reasoning,
+            "category score"
+        );
+    }
     tracing::info!(
-        readability = score.readability,
-        maintainability = score.maintainability,
-        performance = score.performance,
-        security = score.security,
-        architecture = score.architecture,
         composite = score.composite(),
+        synthesis = %score.synthesis,
+        pipeline = %score.pipeline_name,
         session = %session.path().display(),
         "score report"
     );
