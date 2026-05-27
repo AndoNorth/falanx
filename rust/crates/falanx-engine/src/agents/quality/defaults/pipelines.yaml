@@ -1,0 +1,15 @@
+default:
+  parallel: false
+  categories: [readability, maintainability, architecture, performance, security]
+
+quick:
+  parallel: false
+  categories: [readability, maintainability]
+
+security:
+  parallel: false
+  categories: [security, architecture]
+
+strict:
+  parallel: false
+  categories: [readability, maintainability, architecture, performance, security]
