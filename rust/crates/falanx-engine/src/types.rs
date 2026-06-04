@@ -1,26 +1,28 @@
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReviewScore {
-    pub readability: u8,
-    pub maintainability: u8,
-    pub performance: u8,
-    pub security: u8,
-    pub architecture: u8,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CategoryResult {
+    pub name: String,
+    pub score: u8,
+    pub reasoning: String,
 }
 
-impl ReviewScore {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ScoringResult {
+    pub pipeline_name: String,
+    pub categories: Vec<CategoryResult>,
+    pub composite_score: f32,
+    pub synthesis: String,
+}
+
+impl ScoringResult {
     pub fn composite(&self) -> f32 {
-        (self.readability as u32
-            + self.maintainability as u32
-            + self.performance as u32
-            + self.security as u32
-            + self.architecture as u32) as f32
-            / 5.0
+        self.composite_score
     }
 
     pub fn delta(&self, other: &Self) -> f32 {
-        (self.composite() - other.composite()).abs()
+        (self.composite_score - other.composite_score).abs()
     }
 }
+
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReviewIssue {
@@ -56,45 +58,44 @@ pub enum RunState {
 mod tests {
     use super::*;
 
-    fn score(v: u8) -> ReviewScore {
-        ReviewScore {
-            readability: v,
-            maintainability: v,
-            performance: v,
-            security: v,
-            architecture: v,
-        }
-    }
-
-    #[test]
-    fn composite_is_mean_of_five_fields() {
-        let s = ReviewScore {
-            readability: 4,
-            maintainability: 3,
-            performance: 5,
-            security: 2,
-            architecture: 1,
+#[test]
+    fn category_result_serialises_to_json() {
+        let r = CategoryResult {
+            name: "readability".into(),
+            score: 4,
+            reasoning: "clear names".into(),
         };
-        assert!((s.composite() - 3.0).abs() < f32::EPSILON);
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"name\":\"readability\""));
+        assert!(json.contains("\"score\":4"));
     }
 
     #[test]
-    fn composite_uniform_score() {
-        assert!((score(3).composite() - 3.0).abs() < f32::EPSILON);
-        assert!((score(5).composite() - 5.0).abs() < f32::EPSILON);
+    fn scoring_result_composite_returns_composite_score() {
+        let r = ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: 3.5,
+            synthesis: "ok".into(),
+        };
+        assert!((r.composite() - 3.5).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn delta_is_absolute_difference_of_composites() {
-        let a = score(3);
-        let b = score(5);
-        assert!((a.delta(&b) - 2.0).abs() < f32::EPSILON);
-        assert!((b.delta(&a) - 2.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn delta_same_score_is_zero() {
-        let a = score(4);
-        assert!(a.delta(&a) < f32::EPSILON);
+    fn scoring_result_delta_is_absolute_difference() {
+        let a = ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: 3.0,
+            synthesis: "".into(),
+        };
+        let b = ScoringResult {
+            pipeline_name: "default".into(),
+            categories: vec![],
+            composite_score: 4.5,
+            synthesis: "".into(),
+        };
+        assert!((a.delta(&b) - 1.5).abs() < f32::EPSILON);
+        assert!((b.delta(&a) - 1.5).abs() < f32::EPSILON);
     }
 }

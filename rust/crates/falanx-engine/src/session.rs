@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use walkdir::WalkDir;
 
-use crate::types::{ReviewScore, SessionId};
+use crate::types::SessionId;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct SessionEntry {
@@ -18,11 +18,12 @@ pub struct SessionEntry {
 pub enum SessionEvent {
     RunStarted { session_id: String, target: String },
     AgentInvoked { agent: String, iteration: u32 },
-    ScoreComputed { score: ReviewScore, iteration: u32 },
+    CategoryScored { category: String, score: u8, reasoning: String, iteration: u32 },
+    ScoringComplete { pipeline_name: String, composite_score: f32, synthesis: String, iteration: u32 },
     IssuesFound { count: usize, iteration: u32 },
     RewriteApplied { patches: usize, iteration: u32 },
     HorizonReset { iteration: u32 },
-    RunCompleted { final_score: ReviewScore, iterations: u32 },
+    RunCompleted { final_score: crate::types::ScoringResult, iterations: u32 },
     RunFailed { reason: String },
 }
 
@@ -36,7 +37,7 @@ pub struct SessionMeta {
     pub id: SessionId,
     pub path: PathBuf,
     pub started_at: DateTime<Utc>,
-    pub final_score: Option<ReviewScore>,
+    pub final_score: Option<crate::types::ScoringResult>,
     pub iterations: Option<u32>,
 }
 
@@ -269,12 +270,11 @@ mod tests {
             .unwrap();
         session
             .append(SessionEvent::RunCompleted {
-                final_score: crate::types::ReviewScore {
-                    readability: 3,
-                    maintainability: 3,
-                    performance: 3,
-                    security: 3,
-                    architecture: 3,
+                final_score: crate::types::ScoringResult {
+                    pipeline_name: "default".into(),
+                    categories: vec![],
+                    composite_score: 3.0,
+                    synthesis: "ok".into(),
                 },
                 iterations: 1,
             })
@@ -284,6 +284,38 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert!(sessions[0].final_score.is_some());
         assert_eq!(sessions[0].iterations, Some(1));
+    }
+
+    #[test]
+    fn category_scored_event_serialises() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "test").unwrap();
+        session.append(SessionEvent::CategoryScored {
+            category: "security".into(),
+            score: 2,
+            reasoning: "injection risk".into(),
+            iteration: 0,
+        }).unwrap();
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["type"], "category_scored");
+        assert_eq!(v["score"], 2);
+    }
+
+    #[test]
+    fn scoring_complete_event_serialises() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "test2").unwrap();
+        session.append(SessionEvent::ScoringComplete {
+            pipeline_name: "default".into(),
+            composite_score: 3.5,
+            synthesis: "looks ok".into(),
+            iteration: 0,
+        }).unwrap();
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["type"], "scoring_complete");
+        assert_eq!(v["pipeline_name"], "default");
     }
 
     #[test]

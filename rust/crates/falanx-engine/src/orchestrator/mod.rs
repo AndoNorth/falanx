@@ -5,7 +5,7 @@ use crate::{
     config::{FalanxConfig, LoopConfig},
     git::ReviewTarget,
     session::Session,
-    types::{RewritePatch, ReviewScore, SessionId},
+    types::{RewritePatch, ScoringResult, SessionId},
 };
 
 pub struct RunConfig {
@@ -15,7 +15,7 @@ pub struct RunConfig {
 }
 
 pub struct RunResult {
-    pub final_score: ReviewScore,
+    pub final_score: ScoringResult,
     pub iterations: u32,
     pub patches: Vec<RewritePatch>,
     pub session_id: SessionId,
