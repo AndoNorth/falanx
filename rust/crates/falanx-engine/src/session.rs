@@ -16,15 +16,21 @@ pub struct SessionEntry {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
-    RunStarted { session_id: String, target: String },
-    AgentInvoked { agent: String, iteration: u32 },
-    CategoryScored { category: String, score: u8, reasoning: String, iteration: u32 },
-    ScoringComplete { pipeline_name: String, composite_score: f32, synthesis: String, iteration: u32 },
-    IssuesFound { count: usize, iteration: u32 },
-    RewriteApplied { patches: usize, iteration: u32 },
+    RunStarted   { session_id: String, target: String, workflow: String },
+    RunFailed    { reason: String },
     HorizonReset { iteration: u32 },
-    RunCompleted { final_score: crate::types::ScoringResult, iterations: u32 },
-    RunFailed { reason: String },
+    StageStarted   { stage_id: String, iteration: u32 },
+    AgentStarted   { stage_id: String, agent_name: String, iteration: u32 },
+    AgentCompleted {
+        stage_id: String,
+        agent_name: String,
+        turns_used: u32,
+        output: serde_json::Value,
+        iteration: u32,
+    },
+    StageCompleted { stage_id: String, output_as: String, result: serde_json::Value, iteration: u32 },
+    StageSkipped   { stage_id: String, condition: String, iteration: u32 },
+    RunCompleted   { iterations: u32, summary: serde_json::Value },
 }
 
 pub struct Session {
@@ -37,7 +43,7 @@ pub struct SessionMeta {
     pub id: SessionId,
     pub path: PathBuf,
     pub started_at: DateTime<Utc>,
-    pub final_score: Option<crate::types::ScoringResult>,
+    pub summary: Option<serde_json::Value>,
     pub iterations: Option<u32>,
 }
 
@@ -140,15 +146,12 @@ impl Session {
                 }
             }
 
-            let (final_score, iterations) = if last_line.is_empty() {
+            let (summary, iterations) = if last_line.is_empty() {
                 (None, None)
             } else {
                 match serde_json::from_str::<SessionEntry>(&last_line) {
                     Ok(entry) => match entry.event {
-                        SessionEvent::RunCompleted {
-                            final_score,
-                            iterations,
-                        } => (Some(final_score), Some(iterations)),
+                        SessionEvent::RunCompleted { iterations, summary } => (Some(summary), Some(iterations)),
                         _ => (None, None),
                     },
                     Err(_) => (None, None),
@@ -159,7 +162,7 @@ impl Session {
                 id: SessionId(id_str),
                 path,
                 started_at,
-                final_score,
+                summary,
                 iterations,
             });
         }
@@ -204,12 +207,13 @@ mod tests {
             .append(SessionEvent::RunStarted {
                 session_id: session.id().0.clone(),
                 target: "test.rs".into(),
+                workflow: "default".into(),
             })
             .unwrap();
 
         session
-            .append(SessionEvent::AgentInvoked {
-                agent: "quality".into(),
+            .append(SessionEvent::StageStarted {
+                stage_id: "score".into(),
                 iteration: 0,
             })
             .unwrap();
@@ -229,9 +233,9 @@ mod tests {
         let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(first["type"], "run_started");
 
-        // Second line type is agent_invoked
+        // Second line type is stage_started
         let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
-        assert_eq!(second["type"], "agent_invoked");
+        assert_eq!(second["type"], "stage_started");
     }
 
     #[test]
@@ -266,56 +270,20 @@ mod tests {
             .append(SessionEvent::RunStarted {
                 session_id: session.id().0.clone(),
                 target: "test.rs".into(),
+                workflow: "default".into(),
             })
             .unwrap();
         session
             .append(SessionEvent::RunCompleted {
-                final_score: crate::types::ScoringResult {
-                    pipeline_name: "default".into(),
-                    categories: vec![],
-                    composite_score: 3.0,
-                    synthesis: "ok".into(),
-                },
                 iterations: 1,
+                summary: serde_json::json!({"score_result": []}),
             })
             .unwrap();
 
         let sessions = Session::list(dir.path()).unwrap();
         assert_eq!(sessions.len(), 1);
-        assert!(sessions[0].final_score.is_some());
+        assert!(sessions[0].summary.is_some());
         assert_eq!(sessions[0].iterations, Some(1));
-    }
-
-    #[test]
-    fn category_scored_event_serialises() {
-        let dir = tempfile::tempdir().unwrap();
-        let session = Session::new(dir.path(), "test").unwrap();
-        session.append(SessionEvent::CategoryScored {
-            category: "security".into(),
-            score: 2,
-            reasoning: "injection risk".into(),
-            iteration: 0,
-        }).unwrap();
-        let content = std::fs::read_to_string(session.path()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
-        assert_eq!(v["type"], "category_scored");
-        assert_eq!(v["score"], 2);
-    }
-
-    #[test]
-    fn scoring_complete_event_serialises() {
-        let dir = tempfile::tempdir().unwrap();
-        let session = Session::new(dir.path(), "test2").unwrap();
-        session.append(SessionEvent::ScoringComplete {
-            pipeline_name: "default".into(),
-            composite_score: 3.5,
-            synthesis: "looks ok".into(),
-            iteration: 0,
-        }).unwrap();
-        let content = std::fs::read_to_string(session.path()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
-        assert_eq!(v["type"], "scoring_complete");
-        assert_eq!(v["pipeline_name"], "default");
     }
 
     #[test]
@@ -327,5 +295,53 @@ mod tests {
 
         let sessions = Session::list(dir.path()).unwrap();
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn stage_started_serialises() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "t").unwrap();
+        session.append(SessionEvent::StageStarted { stage_id: "score".into(), iteration: 0 }).unwrap();
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["type"], "stage_started");
+        assert_eq!(v["stage_id"], "score");
+    }
+
+    #[test]
+    fn agent_completed_serialises_with_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "t").unwrap();
+        session.append(SessionEvent::AgentCompleted {
+            stage_id: "score".into(),
+            agent_name: "score_readability".into(),
+            turns_used: 1,
+            output: serde_json::json!({"score": 4, "reasoning": "ok"}),
+            iteration: 0,
+        }).unwrap();
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["type"], "agent_completed");
+        assert_eq!(v["agent_name"], "score_readability");
+        assert_eq!(v["output"]["score"], 4);
+    }
+
+    #[test]
+    fn run_completed_carries_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "t").unwrap();
+        session.append(SessionEvent::RunStarted {
+            session_id: session.id().0.clone(),
+            target: "HEAD~1".into(),
+            workflow: "default".into(),
+        }).unwrap();
+        session.append(SessionEvent::RunCompleted {
+            iterations: 2,
+            summary: serde_json::json!({"score_result": []}),
+        }).unwrap();
+        let sessions = Session::list(dir.path()).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].iterations, Some(2));
+        assert!(sessions[0].summary.is_some());
     }
 }
