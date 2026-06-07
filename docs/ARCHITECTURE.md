@@ -1,15 +1,15 @@
 
-# Falanx Architecture — v1
+# Falanx Architecture — Composable Agent Pipeline
 
-> This document describes the v1 architecture. Decisions are intentional and bounded. Forward-looking items are explicitly marked — they are known directions, not scope creep.
+> This document describes the composable agent pipeline architecture. Agents are defined as directories with prompts and config. Workflows are YAML-driven. The `WorkflowRunner` orchestrates execution. This replaces the hardcoded score → review → rewrite pipeline.
 
 ---
 
 ## User Story
 
-> As a developer, after finishing a change, I run `falanx` against my diff. It scores, reviews, and optionally rewrites my code — producing a full audit trail I can trust before I merge.
+> As a developer, after finishing a change, I run `falanx run` against my diff. The system executes a workflow of agents, each producing structured output. Workflow logic is defined in `workflow.yaml`, not Rust code. The system produces a full audit trail I can trust before I merge.
 
-The tool runs locally or in Docker. It is versioned, shareable, and CI-ready. Developer-triggered first; CI integration is additive later.
+The tool runs locally or in Docker. It is versioned, shareable, and CI-ready. Workflows are composable and overrideable. Developer-triggered first; CI integration is additive later.
 
 ---
 
@@ -19,12 +19,12 @@ Falanx runs in two modes from the same binary.
 
 ### CLI Mode
 
-Direct invocation against a local git repo. The engine runs, executes the agent pipeline, writes output, and exits.
+Direct invocation against a local git repo. The engine runs, loads the workflow, executes stages, writes output, and exits.
 
 ```
 developer
     │
-    │  falanx review --diff HEAD~1
+    │  falanx run --diff HEAD~1
     ▼
 ┌─────────────────────────────┐
 │        Falanx CLI           │
@@ -34,12 +34,12 @@ developer
                ▼
 ┌─────────────────────────────┐
 │      Rust Core Engine       │
-│  (orchestrator + agents)    │
+│  (WorkflowRunner + agents)  │
 └──────────────┬──────────────┘
                │
                ▼
         stdout + JSONL session file
-        (score report + full audit trail)
+        (stage outputs + full audit trail)
 ```
 
 ### Serve Mode
@@ -64,7 +64,7 @@ Long-running process. Exposes two surfaces simultaneously:
          ▼                               ▼
 ┌──────────────────────────────────────────────────┐
 │                Rust Core Engine                   │
-│           (orchestrator + agents)                 │
+│           (WorkflowRunner + agents)               │
 └──────────────────────────────────────────────────┘
          │                               │
          ▼                               ▼
@@ -84,38 +84,77 @@ Same engine, both modes. Mode only changes invocation and output surface.
 │                      Rust Core Engine                         │
 │                                                               │
 │   ┌───────────────────────────────────────────────────────┐   │
-│   │            CodeReviewOrchestrationAgent               │   │
-│   │  - accepts: file | git diff (git-native, v1)          │   │
-│   │  - owns: sequencing, loop control, re-scoring         │   │
-│   │  - exits: target score hit | max iterations | plateau │   │
-│   │  - recovers: horizon reset on context degradation     │   │
+│   │                   WorkflowRunner                       │   │
+│   │  - loads: workflow.yaml + agent definitions           │   │
+│   │  - drives: sequential stage loop                      │   │
+│   │  - manages: TemplateContext (accumulates outputs)     │   │
+│   │  - owns: loop control, horizon reset, skip logic      │   │
+│   │  - exits: target score | max iterations | plateau     │   │
 │   │  - produces: combined report + JSONL audit trail      │   │
 │   └───────────────────────┬───────────────────────────────┘   │
 │                           │                                   │
 │        ┌──────────────────┼──────────────────┐                │
 │        ▼                  ▼                  ▼                │
 │  ┌───────────┐    ┌──────────────┐    ┌─────────────┐         │
-│  │ CodeQuality│    │ CodeReview   │    │ CodeWriting │         │
-│  │  Agent    │→   │   Agent      │→   │   Agent     │         │
-│  │  (score)  │    │  (critique)  │    │  (rewrite)  │         │
+│  │  Score    │    │   Review     │    │  Rewrite    │         │
+│  │  Agents   │→   │    Agent     │→   │   Agent     │         │
+│  │  (5x)     │    │   (1x)       │    │   (1x)      │         │
 │  └───────────┘    └──────────────┘    └─────────────┘         │
 │                                                               │
 │   ┌───────────────────────────────────────────────────────┐   │
 │   │              Model Abstraction Layer                  │   │
 │   │   LLM Client trait — swappable provider               │   │
 │   │                                                       │   │
-│   │   Anthropic API  │  OpenAI API  │  Ollama  │  Proxy   │   │
+│   │   Anthropic API  │  OpenAI API  │  Ollama  │  Mock    │   │
 │   └───────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Agents do not call LLMs directly. All LLM access goes through the model abstraction layer. Sub-agents are fully isolated — the orchestrator receives only their final text output, never their internal context.
+Agents do not call LLMs directly. All LLM access goes through the model abstraction layer. Each agent is invoked independently with the same inputs and extracted outputs via `AgentDef`. The orchestrator manages context accumulation and stage sequencing via `WorkflowRunner`.
 
 ---
 
-## Context Management
+## Context and Data Flow
 
-Cersei manages context internally. Each agent holds its own isolated message history in memory. Built-in mechanisms handle context pressure automatically:
+### TemplateContext
+
+The `TemplateContext` accumulates stage outputs across the workflow. It begins with the diff only:
+
+```
+{ diff: "..." }
+```
+
+After the score stage completes:
+
+```
+{
+  diff: "...",
+  score_result: [
+    {"agent": "score_readability", "score": 4, "reasoning": "..."},
+    {"agent": "score_maintainability", "score": 3, "reasoning": "..."},
+    ...
+  ]
+}
+```
+
+After the review stage:
+
+```
+{
+  diff: "...",
+  score_result: [...],
+  review_result: [
+    {"location": "file:123", "problem": "...", "fix": "..."},
+    ...
+  ]
+}
+```
+
+Each subsequent stage can access all prior outputs via minijinja template variables. On each outer loop iteration, context resets to `{ diff }` only — prior iteration outputs do not bleed.
+
+### Cersei Agent Context
+
+Cersei manages context internally for each agent. Each agent holds its own isolated message history in memory. Built-in mechanisms handle context pressure automatically:
 
 | Mechanism | Behaviour |
 |---|---|
@@ -129,54 +168,73 @@ These operate transparently. No manual context management is required in the Fal
 
 When the orchestrator detects reasoning degradation mid-loop (e.g. score plateau with no meaningful diff change, or circular critiques), it performs a horizon reset:
 
-1. Current Cersei agent is discarded
-2. A fresh agent is spun up with clean context
-3. Seed context is the original diff + current scores only — no accumulated critique history
+1. All live agent contexts are discarded
+2. Fresh agents are spun up with clean context
+3. Seed context is the original diff only — `TemplateContext` resets
 4. Loop continues from the next iteration
 
-This prevents wasted token spend on a poisoned context window. The JSONL session file retains the full history for audit purposes; only the live context resets. Manual trigger (`--reset-horizon`) is a future addition on top of this automatic behaviour.
+This prevents wasted token spend on a poisoned context window. The JSONL session file retains the full history for audit purposes; only the live context resets.
 
 ---
 
-## Loop Mode
+## Loop Control and Exit Conditions
 
-The orchestrator iterates the pipeline toward a quality target.
+The `WorkflowRunner` iterates the stage pipeline toward a quality target. Loop configuration is loaded from `workflow.yaml`:
 
-| Exit condition | Flag | Notes |
+```yaml
+loop:
+  max_iterations: 5          # mandatory hard ceiling
+  target_score: 4.5          # exit when score >= threshold
+  plateau_threshold: 0.1     # horizon reset trigger
+```
+
+| Exit condition | Config source | Notes |
 |---|---|---|
-| Target score hit | `--target 4.5` | Happy path — exits when composite score ≥ threshold |
-| Max iterations | `--max-iter 3` | Hard stop — mandatory, prevents runaway LLM spend |
-| Plateau detected | `--plateau-threshold 0.1` | Safety net — exits when score delta between passes falls below threshold |
+| Target score hit | `loop.target_score` | Happy path — exits when composite score ≥ threshold |
+| Max iterations | `loop.max_iterations` | Hard stop — mandatory, prevents runaway LLM spend |
+| Plateau detected | `loop.plateau_threshold` | Safety net — exits when score delta falls below threshold |
 
-All three are active when loop mode is enabled. `--max-iter` is the only mandatory guard. Horizon reset fires before exit — it is a recovery attempt, not an exit condition.
+All three are active. `max_iterations` is the only mandatory guard. Horizon reset fires before exit — it is a recovery attempt, not an exit condition. CLI flags (`--max-iter`, `--target`) override YAML values.
 
 ---
 
 ## Audit Trail & Sessions
 
-Cersei writes every prompt, response, and tool call to append-only **JSONL files** when session mode is enabled. Falanx uses these as both the audit trail and the context persistence mechanism.
+Falanx writes a **JSONL audit trail** for every run. The session file captures workflow execution, agent invocations, outputs, loop state, and horizon resets. It exists so you can trust the output, not just accept it.
 
 ```
-~/.falanx/sessions/<repo-hash>/<branch-name>/<session-id>.jsonl
+~/.falanx/sessions/<label>/<uuid>.jsonl
 ```
 
-The JSONL file captures: agent steps, LLM prompts and responses, tool calls, scores per pass, horizon resets. It exists so you can trust the output, not just accept it.
+### Session Events
+
+| Event | Fields | Notes |
+|---|---|---|
+| `RunStarted` | session_id, target, workflow | Marks start of run |
+| `StageStarted` | stage_id, iteration | Stage begins in current iteration |
+| `AgentStarted` | stage_id, agent_name, iteration | Individual agent invocation begins |
+| `AgentCompleted` | stage_id, agent_name, turns_used, output, iteration | Agent completed; output is extracted (json_object/json_array/text) |
+| `StageCompleted` | stage_id, output_as, result, iteration | Stage complete; result available in TemplateContext |
+| `StageSkipped` | stage_id, condition, iteration | Stage skipped due to predicate (e.g. `score_below_target`) |
+| `HorizonReset` | iteration | Context reset triggered by plateau or degradation |
+| `RunCompleted` | iterations, summary | Run complete; summary is final TemplateContext state |
+| `RunFailed` | reason | Run failed; reason describes the error |
 
 ### Session Identity
 
-Session ID is derived from `repo root + branch name`. Each run starts a new session by default. A branch accumulates multiple sessions — each is an independent review attempt that can be continued or abandoned.
+Session ID is derived from repo root + branch name. Each run starts a new session by default. A branch accumulates multiple sessions — each is an independent review attempt.
 
 ### Session Commands
 
 ```bash
 # Start a new session (default)
-falanx review --diff HEAD~1
+falanx run --diff HEAD~1
 
-# List sessions for the current branch (timestamps, scores, iteration count)
+# List sessions for the current branch
 falanx list-sessions
 
 # Continue a specific session (resume context, continue loop)
-falanx review --diff HEAD~1 --continue <session-id>
+falanx run --diff HEAD~1 --continue <session-id>
 ```
 
 Continuation is intentional — you pick a session by ID after inspecting `list-sessions`. This covers the "run failed midway" and "switch LLM provider mid-review" cases.
@@ -189,11 +247,52 @@ JSONL session files are the backing store. HTTP API and MCP server read from the
 
 | Endpoint | Data | Priority |
 |---|---|---|
-| `GET /runs/:id/audit` | Full per-run trace from JSONL: agent steps, prompts, tool calls, responses | 1 |
-| `GET /runs` | Run history: scores, timestamps, targets per branch | 2 |
-| `GET /runs/:id/status` | Live run status: active agent, current iteration | 3 |
+| `GET /runs/:id/audit` | Full per-run trace from JSONL: stage execution, agent outputs, loop state, horizon resets | 1 |
+| `GET /runs` | Run history: summary, timestamps, targets per branch | 2 |
+| `GET /runs/:id/status` | Live run status: active stage, current iteration | 3 |
 
 ---
+
+## Workflow Configuration
+
+Workflows are defined in YAML. The default workflow is compiled into the binary but can be overridden:
+
+```yaml
+loop:
+  max_iterations: 5
+  target_score: 4.5
+  plateau_threshold: 0.1
+
+stages:
+  - id: score
+    agents:
+      - score_readability
+      - score_maintainability
+      - score_architecture
+      - score_performance
+      - score_security
+    output_format: json_object
+    output_as: score_result
+
+  - id: review
+    agent: review
+    output_format: json_array
+    output_as: review_result
+    skip_if: score_below_target
+
+  - id: rewrite
+    agent: rewrite
+    output_format: json_array
+    output_as: rewrite_result
+    skip_if: no_review_issues
+```
+
+Agents are directories containing:
+- `system.md` — system prompt for Cersei
+- `prompt.md` — minijinja template, receives TemplateContext variables
+- `config.yaml` — `kind` (cersei, default) and `max_turns`
+
+User-defined workflows and agents override defaults. See below for agent definition details.
 
 ## Target Input
 
@@ -202,18 +301,140 @@ JSONL session files are the backing store. HTTP API and MCP server read from the
 | v1 | `--diff HEAD~1`, `--diff main..feature`, `--file src/foo.rs` | Git-native, works locally and in Docker via volume mount |
 | Later | `--pr 123` | Platform API (GitHub/GitLab) — additive, no rearchitecting required |
 
-Docker v1: `docker run -v $(pwd):/repo falanx review --diff HEAD~1`
+Docker v1: `docker run -v $(pwd):/repo falanx run --diff HEAD~1`
 
 ---
 
-## Configuration
+## Agent and Workflow Definition
+
+### Agent Definition (`AgentDef`)
+
+Each agent is a Rust struct loaded from a directory:
+
+```rust
+pub struct AgentDef {
+    pub name: String,
+    pub kind: AgentKind,
+    pub system_prompt: String,
+    pub prompt_template: String,
+    pub max_turns: u32,
+}
+```
+
+Directory layout:
+
+```
+agents/
+  score_readability/
+    system.md
+    prompt.md
+    config.yaml
+  review/
+    system.md
+    prompt.md
+    config.yaml
+```
+
+`config.yaml` example:
+
+```yaml
+kind: cersei
+max_turns: 1
+```
+
+The prompt template receives `TemplateContext` variables via minijinja:
+
+```
+{{ diff }}
+{{ score_result }}
+{{ score_result | selectattr("agent", "equalto", "score_security") | first }}
+{{ review_result | tojson }}
+```
+
+### Agent Output Extraction
+
+| `output_format` | Behaviour | Yields |
+|---|---|---|
+| `json_object` | Find first `{` … `}`, parse as JSON | serde_json::Value::Object |
+| `json_array` | Find first `[` … `]`, parse as JSON | serde_json::Value::Array |
+| `text` | Raw agent output | serde_json::Value::String |
+
+### Multi-agent Stages
+
+When a stage has multiple agents (e.g. five score agents), each runs independently with the same inputs. Outputs are collected and wrapped:
+
+```json
+[
+  {"agent": "score_readability", "score": 4, "reasoning": "..."},
+  {"agent": "score_maintainability", "score": 3, "reasoning": "..."},
+  ...
+]
+```
+
+Single-agent stages extract directly without wrapping.
+
+---
+
+---
+
+## Runtime Configuration
 
 | Source | Precedence | Purpose |
 |---|---|---|
-| CLI args | Highest | Override anything at invocation time |
-| `.env` | Base | API keys, model selection, loop defaults |
+| CLI args | Highest | Override workflow YAML and env vars at invocation time |
+| Workflow YAML | Middle | Loop config, stages, predicates |
+| `.env` | Base | API keys, model selection |
 
 Secrets stay out of source control. CLI args always win.
+
+Environment variables:
+
+| Variable | Scope |
+|---|---|
+| `FALANX_MODEL` | Model ID (e.g. claude-opus-4-1) |
+| `ANTHROPIC_API_KEY` | API authentication |
+| `FALANX_BASE_URL` | Provider URL override (Ollama, etc.) |
+| `FALANX_DRY_RUN` | Mock provider, no LLM calls |
+| `FALANX_SESSION_DIR` | Session storage path |
+| `FALANX_MAX_DIFF_CHARS` | Diff size cap |
+
+---
+
+## Module Layout
+
+```
+falanx-engine/src/
+  workflow/
+    mod.rs        — Workflow, Stage, StageResult
+    runner.rs     — WorkflowRunner: orchestrates stage loop
+    context.rs    — TemplateContext: accumulates outputs
+  agent/
+    mod.rs        — AgentDef, AgentKind
+    loader.rs     — Load AgentDef from filesystem
+    run.rs        — Run single agent, extract output
+  orchestrator/
+    mod.rs        — Entry point, RunConfig, RunResult
+    horizon.rs    — Horizon reset detection
+  session.rs      — SessionEvent (generic), Session, JSONL I/O
+  provider.rs     — Cersei provider abstraction
+  config.rs       — FalanxConfig, LoopConfig
+  types.rs        — RunResult, extracted types
+```
+
+Defaults compiled into binary:
+
+```
+falanx-engine/src/defaults/
+  agents/
+    score_readability/
+    score_maintainability/
+    score_architecture/
+    score_performance/
+    score_security/
+    review/
+    rewrite/
+  workflow.yaml
+```
 
 ---
 
@@ -231,13 +452,51 @@ Secrets stay out of source control. CLI args always win.
 
 | Item | Intent |
 |---|---|
-| Post-rewrite validation | Run `cargo check` / linter after `CodeWritingAgent`. v1: user validates manually or via their own coding agent. |
+| Post-rewrite validation | Run `cargo check` / linter after rewrite stage. v1: user validates manually or via their own coding agent. |
 | Manual horizon reset | `--reset-horizon` flag to trigger context reset on demand mid-session. |
 | Platform API input | `--pr 123` fetches diff from GitHub/GitLab. Requires auth, platform-specific surface. |
+| Per-agent models | Model override per AgentDef. v1: all agents share FalanxConfig model. |
+| Parallel stages | Concurrent agent execution within a stage. v1: sequential only. |
 | CI integration | Falanx as a CI step. Developer-triggered first, CI additive. |
 | HTTP API auth | API key middleware. v1 is localhost / trusted network only. |
 | Remote git in Docker | Pull and push to remote repo from serve mode container. Volume mount sufficient for v1. |
-| Cross-MR institutional memory | RAG over historical JSONL sessions. Different problem from session continuity. |
+| Institutional memory | RAG over historical JSONL sessions. Different problem from session continuity. |
+
+---
+
+## CLI Usage
+
+```bash
+# Run workflow against a diff
+falanx run --diff HEAD~1
+
+# Against a git range
+falanx run --diff main..feature
+
+# Against a single file
+falanx run --file src/main.rs
+
+# Override loop limits
+falanx run --diff HEAD~1 --max-iter 10 --target 4.5
+
+# Use custom workflow
+falanx run --diff HEAD~1 --workflow custom
+
+# Override agent directory
+falanx run --diff HEAD~1 --agents /path/to/agents
+
+# Mock run (no LLM calls)
+falanx run --diff HEAD~1 --dry-run
+
+# List sessions
+falanx list-sessions
+
+# Continue a session
+falanx run --diff HEAD~1 --continue <session-id>
+
+# Serve mode (MCP + HTTP)
+falanx serve
+```
 
 ---
 
@@ -246,8 +505,10 @@ Secrets stay out of source control. CLI args always win.
 - Same binary, same engine, two entry points
 - CLI exits cleanly; serve mode runs until stopped
 - MCP and HTTP are independent surfaces over the same engine
-- No rewrite without prior critique — orchestrator enforces sequence
+- No rewrite without prior critique — enforced by `skip_if: no_review_issues`
 - Every run produces a JSONL audit trail regardless of mode
-- Loop mode always has a hard iteration ceiling
+- Loop always has a hard iteration ceiling
 - Horizon reset preserves audit history, resets only live context
+- Agents are invoked independently; no shared Cersei sessions between stages
 - Git-native input in v1; platform API is additive
+- Workflows and agents are composable and overrideable via YAML
