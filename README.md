@@ -59,34 +59,31 @@ Available in the nix shell:
 
 ```bash
 # Review a git diff
-falanx review --diff HEAD~1
+falanx run --diff HEAD~1
 
-# Review across a branch
-falanx review --diff main..feature
+# Review across a branch range
+falanx run --diff main..feature
 
 # Review a single file
-falanx review --file src/main.rs
+falanx run --file src/main.rs
 
-# Score only — no rewrite
-falanx score --diff HEAD~1
+# Override loop settings
+falanx run --diff HEAD~1 --target 4.5 --max-iter 3
 
-# Full pipeline: score + review + rewrite
-falanx full --diff HEAD~1
-
-# Loop until target score or max iterations
-falanx full --diff HEAD~1 --target 4.5 --max-iter 3
+# Load additional agents from a local directory
+falanx run --diff HEAD~1 --agents ./.falanx/agents
 ```
 
 ### Sessions
 
-Each run starts a new session. Sessions are scoped to your current branch.
+Each run writes a JSONL audit trail scoped to your current target.
 
 ```bash
-# List sessions for this branch
+# List past sessions
 falanx list-sessions
 
-# Continue a previous session
-falanx review --diff HEAD~1 --continue <session-id>
+# Inspect a session directly
+cat ~/.falanx/sessions/<label>/<session-id>.jsonl | jq .
 ```
 
 ### Serve Mode
@@ -101,31 +98,6 @@ Via Docker:
 
 ```bash
 docker run -v $(pwd):/repo -p 3000:3000 falanx serve
-```
-
----
-
-## Example Output
-
-```
-=== Code Quality Score ===
-Readability:     4/5
-Maintainability: 3/5
-Performance:     4/5
-Security:        5/5
-Architecture:    3/5
-Overall:         3.8/5
-
-=== Review Feedback ===
-[1] src/auth.rs:42 — token expiry check uses `<` not `<=`; off-by-one allows expired tokens through for one second window. Fix: change comparison operator.
-[2] src/handlers/user.rs:118 — error variant returned without context; caller cannot distinguish network failure from validation failure. Fix: wrap in typed error enum.
-
-=== Applied Changes ===
---- a/src/auth.rs
-+++ b/src/auth.rs
-@@ -42 +42 @@
--    if now < expiry {
-+    if now <= expiry {
 ```
 
 ---
