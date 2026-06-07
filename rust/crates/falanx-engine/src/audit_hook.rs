@@ -30,8 +30,9 @@ impl Hook for FalanxAuditHook {
                     .as_deref()
                     .unwrap_or("unknown")
                     .to_string();
-                let _ = self.session.append(SessionEvent::AgentInvoked {
-                    agent,
+                let _ = self.session.append(SessionEvent::AgentStarted {
+                    stage_id: "unknown".to_string(),
+                    agent_name: agent,
                     iteration: self.iteration,
                 });
             }

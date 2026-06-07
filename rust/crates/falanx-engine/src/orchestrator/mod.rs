@@ -1,11 +1,10 @@
 pub mod horizon;
-pub mod pipeline;
 
 use crate::{
     config::{FalanxConfig, LoopConfig},
     git::ReviewTarget,
     session::Session,
-    types::{RewritePatch, ScoringResult, SessionId},
+    types::SessionId,
 };
 
 pub struct RunConfig {
@@ -15,12 +14,11 @@ pub struct RunConfig {
 }
 
 pub struct RunResult {
-    pub final_score: ScoringResult,
     pub iterations: u32,
-    pub patches: Vec<RewritePatch>,
     pub session_id: SessionId,
+    pub summary: serde_json::Value,
 }
 
-pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
-    pipeline::run(config, falanx_cfg).await
+pub async fn run(_config: RunConfig, _falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
+    todo!("replaced by WorkflowRunner in Task C2")
 }

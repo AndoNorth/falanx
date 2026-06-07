@@ -1,9 +1,9 @@
 pub mod agent;
-// pub mod audit_hook;  // Task A - disabled during types refactor, re-enabled in Task F
+pub mod audit_hook;
 pub mod config;
 pub mod git;
-// pub mod orchestrator;  // Task A - disabled during types refactor, re-enabled in Task F
+pub mod orchestrator;
 pub mod provider;
-pub mod session;  // Task A - disabled during types refactor, re-enabled in Task F
+pub mod session;
 pub mod types;
 pub mod workflow;
