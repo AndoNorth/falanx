@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct TemplateContext {
     pub diff: String,
     pub stages: HashMap<String, serde_json::Value>,
