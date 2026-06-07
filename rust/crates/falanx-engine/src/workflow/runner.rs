@@ -37,9 +37,8 @@ impl<'a> WorkflowRunner<'a> {
         let mut iteration = 0u32;
         let mut prev_composite: Option<f32> = None;
         let mut plateau_streak = 0u32;
-        let mut final_ctx = TemplateContext::new(diff.to_string());
 
-        loop {
+        let final_ctx = 'run: loop {
             let mut ctx = TemplateContext::new(diff.to_string());
             ctx.loop_iteration = iteration;
 
@@ -64,14 +63,13 @@ impl<'a> WorkflowRunner<'a> {
                 })?;
             }
 
-            final_ctx = ctx.clone();
-            let composite = composite_from_ctx(&final_ctx);
+            let composite = composite_from_ctx(&ctx);
 
             if composite >= self.workflow.loop_cfg.target_score {
-                break;
+                break 'run ctx;
             }
             if iteration >= self.workflow.loop_cfg.max_iterations {
-                break;
+                break 'run ctx;
             }
 
             if let Some(prev) = prev_composite {
@@ -90,13 +88,12 @@ impl<'a> WorkflowRunner<'a> {
                     prev_composite = None;
                     self.session.append(SessionEvent::HorizonReset { iteration })?;
                 } else {
-                    break;
+                    break 'run ctx;
                 }
             }
 
             iteration += 1;
-        }
-
+        };
         let summary = serde_json::to_value(&final_ctx.stages).unwrap_or_default();
         self.session.append(SessionEvent::RunCompleted {
             iterations: iteration,
@@ -221,5 +218,71 @@ stages:
         assert!(content.contains("agent_completed"));
         assert!(content.contains("stage_completed"));
         assert!(content.contains("run_completed"));
+    }
+
+    #[tokio::test]
+    async fn runner_executes_full_three_stage_pipeline_dry_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dry_cfg();
+        let session = Session::new(dir.path(), "full-pipeline").unwrap();
+
+        // Full 3-stage workflow: score → review (if score < target) → rewrite (if issues found)
+        let yaml = r#"
+loop:
+  max_iterations: 1
+  target_score: 5.0
+  plateau_threshold: 0.1
+stages:
+  - id: score
+    agents: [score_readability]
+    output_format: json_object
+    output_as: score_result
+  - id: review
+    agent: review
+    output_format: json_array
+    output_as: review_result
+    skip_if: score_meets_target
+  - id: rewrite
+    agent: rewrite
+    output_format: json_array
+    output_as: rewrite_result
+    skip_if: no_review_issues
+"#;
+        let workflow = WorkflowConfig::from_str(yaml).unwrap();
+
+        // Create all 3 agents with system prompts that match MockProvider routing
+        let agents_dir = dir.path().join("agents");
+        for (name, system) in &[
+            ("score_readability", "You are a code quality reviewer."),
+            ("review", "You are a senior code reviewer."),
+            ("rewrite", "You are a precise code editor."),
+        ] {
+            std::fs::create_dir_all(agents_dir.join(name)).unwrap();
+            std::fs::write(agents_dir.join(name).join("system.md"), system).unwrap();
+            std::fs::write(agents_dir.join(name).join("prompt.md"), "{{ diff }}").unwrap();
+            std::fs::write(agents_dir.join(name).join("config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
+        }
+
+        let runner = WorkflowRunner::new(&workflow, &cfg, &session, &agents_dir);
+        let result = runner.run("fn foo() {}").await.unwrap();
+
+        assert_eq!(result.iterations, 1);
+
+        // Verify all three stages ran (score, review, rewrite)
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let events: Vec<serde_json::Value> = content.lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+
+        let stage_ids: Vec<&str> = events.iter()
+            .filter(|e| e["type"] == "stage_completed")
+            .filter_map(|e| e["stage_id"].as_str())
+            .collect();
+
+        assert!(stage_ids.contains(&"score"), "score stage missing: {:?}", stage_ids);
+        // Score is 3.0 (mock), target is 5.0, so review should run
+        assert!(stage_ids.contains(&"review"), "review stage missing: {:?}", stage_ids);
+        // Mock review returns non-empty issues, so rewrite should run
+        assert!(stage_ids.contains(&"rewrite"), "rewrite stage missing: {:?}", stage_ids);
     }
 }

@@ -22,14 +22,20 @@ impl MockProvider {
         r#"{"score": 3, "reasoning": "mock category reasoning"}"#
     }
 
-    fn mock_synthesis_json() -> &'static str {
-        r#"{"overall_score": 3, "summary": "mock synthesis summary"}"#
-    }
-
     fn response_for(request: &CompletionRequest) -> &'static str {
-        // Check system prompt first, then fall back to last user message content.
-        // Agents set the stage keyword in the user prompt, not the system prompt.
         let system = request.system.as_deref().unwrap_or("");
+
+        if system.contains("code quality reviewer") {
+            return Self::mock_category_json();
+        }
+        if system.contains("senior code reviewer") {
+            return Self::mock_issues_json();
+        }
+        if system.contains("precise code editor") {
+            return Self::mock_patches_json();
+        }
+
+        // Legacy fallback
         let user_text = request
             .messages
             .iter()
@@ -37,22 +43,9 @@ impl MockProvider {
             .find(|m| m.role == cersei_types::Role::User)
             .and_then(|m| m.get_text())
             .unwrap_or("");
-
-        // New scoring pipeline routing — check system prompt first
-        if system.contains("code quality reviewer") {
-            return Self::mock_category_json();
-        }
-
-        // Synthesis agent — no system prompt, check user message
-        if user_text.contains("synthesising") {
-            return Self::mock_synthesis_json();
-        }
-
-        // Legacy routing for review + rewrite agents
-        let haystack = if system.is_empty() { user_text } else { system };
-        if haystack.contains("SCORE") {
+        if user_text.contains("SCORE") {
             Self::mock_score_json()
-        } else if haystack.contains("CRITIQUE") {
+        } else if user_text.contains("CRITIQUE") {
             Self::mock_issues_json()
         } else {
             Self::mock_patches_json()
@@ -133,25 +126,31 @@ mod tests {
     }
 
     #[test]
-    fn response_routing_score() {
+    fn response_routing_scoring_agent() {
         let mut req = CompletionRequest::new("mock");
-        req.system = Some("SCORE this diff".to_string());
+        req.system = Some("You are a code quality reviewer.".to_string());
         let resp = MockProvider::response_for(&req);
-        assert!(resp.contains("readability"));
+        let v: serde_json::Value = serde_json::from_str(resp).unwrap();
+        assert!(v.get("score").is_some());
+        assert!(v.get("reasoning").is_some());
     }
 
     #[test]
-    fn response_routing_critique() {
+    fn response_routing_review_agent() {
         let mut req = CompletionRequest::new("mock");
-        req.system = Some("CRITIQUE this diff".to_string());
+        req.system = Some("You are a senior code reviewer.".to_string());
         let resp = MockProvider::response_for(&req);
+        let v: serde_json::Value = serde_json::from_str(resp).unwrap();
+        assert!(v.as_array().is_some());
         assert!(resp.contains("location"));
     }
 
     #[test]
-    fn response_routing_rewrite_default() {
-        let req = CompletionRequest::new("mock");
+    fn response_routing_rewrite_agent() {
+        let mut req = CompletionRequest::new("mock");
+        req.system = Some("You are a precise code editor.".to_string());
         let resp = MockProvider::response_for(&req);
-        assert_eq!(resp, "[]");
+        let v: serde_json::Value = serde_json::from_str(resp).unwrap();
+        assert!(v.as_array().is_some());
     }
 }
