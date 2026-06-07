@@ -124,18 +124,8 @@ impl<'a> WorkflowRunner<'a> {
                 iteration: ctx.loop_iteration,
             })?;
 
-            let result = match run_agent(&def, &rendered, self.cfg, &stage_cfg.output_format).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!(agent = %agent_name, error = %e, "agent run failed; using null output");
-                    AgentRunResult {
-                        agent_name: agent_name.clone(),
-                        raw_output: String::new(),
-                        extracted: serde_json::Value::Null,
-                        turns_used: 0,
-                    }
-                }
-            };
+            let result = run_agent(&def, &rendered, self.cfg, &stage_cfg.output_format).await
+                .map_err(|e| anyhow::anyhow!("agent '{}' in stage '{}' failed: {}", agent_name, stage_cfg.id, e))?;
 
             self.session.append(SessionEvent::AgentCompleted {
                 stage_id: stage_cfg.id.clone(),
@@ -217,7 +207,7 @@ stages:
 
         let agents_dir = dir.path().join("agents");
         std::fs::create_dir_all(agents_dir.join("score_readability")).unwrap();
-        std::fs::write(agents_dir.join("score_readability/system.md"), "sys").unwrap();
+        std::fs::write(agents_dir.join("score_readability/system.md"), "You are a code quality reviewer.").unwrap();
         std::fs::write(agents_dir.join("score_readability/prompt.md"), "score: {{ diff }}").unwrap();
         std::fs::write(agents_dir.join("score_readability/config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
 
