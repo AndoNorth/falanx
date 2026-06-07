@@ -109,6 +109,7 @@ async fn cmd_run(args: RunArgs) -> anyhow::Result<()> {
         target,
         loop_cfg: cfg.loop_cfg.clone(),
         session,
+        agents_dir: args.agents,
     };
 
     let result = orchestrator::run(run_cfg, &cfg).await?;

@@ -12,6 +12,7 @@ pub struct RunConfig {
     pub target: ReviewTarget,
     pub loop_cfg: LoopConfig,
     pub session: Session,
+    pub agents_dir: Option<std::path::PathBuf>,
 }
 
 pub struct RunResult {
@@ -21,8 +22,11 @@ pub struct RunResult {
 }
 
 pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
-    let agents_dir = resolve_agents_dir();
-    let workflow = WorkflowConfig::load_default()
+    let agents_dir = config
+        .agents_dir
+        .clone()
+        .unwrap_or_else(resolve_agents_dir);
+    let workflow = WorkflowConfig::load(Some(&agents_dir))
         .map_err(|e| anyhow::anyhow!("failed to load workflow: {}", e))?;
     run_with_workflow_and_agents(config, falanx_cfg, workflow, &agents_dir).await
 }
@@ -43,7 +47,7 @@ async fn run_with_workflow_and_agents(
     mut workflow: WorkflowConfig,
     agents_dir: &std::path::Path,
 ) -> anyhow::Result<RunResult> {
-    let RunConfig { target, loop_cfg, session } = config;
+    let RunConfig { target, loop_cfg, session, .. } = config;
     let session_id = session.id().clone();
 
     let diff = target.extract_diff()?;
