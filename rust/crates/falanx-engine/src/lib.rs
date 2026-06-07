@@ -7,3 +7,4 @@ pub mod orchestrator;  // Task A - disabled during types refactor, re-enabled in
 pub mod provider;
 pub mod session;  // Task A - disabled during types refactor, re-enabled in Task F
 pub mod types;
+pub mod workflow;
