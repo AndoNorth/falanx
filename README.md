@@ -34,12 +34,11 @@ cp example.env.local .env.local
 Edit `.env.local`:
 
 ```env
-# Required
+# Required for Anthropic (Claude) models
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
 
-# Optional
-OPENAI_API_KEY=
-OLLAMA_HOST=http://localhost:11434
+# Model to use (default: anthropic/claude-opus-4-7)
+FALANX_MODEL=anthropic/claude-opus-4-7
 ```
 
 `.env.local` is gitignored and loaded automatically by direnv. Never commit it.
@@ -99,6 +98,53 @@ Via Docker:
 ```bash
 docker run -v $(pwd):/repo -p 3000:3000 falanx serve
 ```
+
+---
+
+## Testing
+
+### Without an API key (dry-run)
+
+The mock provider runs the full pipeline with no LLM calls. Good for verifying config, agent loading, and session output:
+
+```bash
+FALANX_DRY_RUN=true falanx run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+```
+
+Or with the flag directly:
+
+```bash
+cargo run --bin falanx -- run --dry-run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+```
+
+Check the session output:
+
+```bash
+cat $(ls -t ~/.falanx/sessions/**/*.jsonl | head -1) | jq .
+```
+
+### With a local Ollama model
+
+> **Known limitation:** cersei-provider 0.1.9 routes Ollama through the OpenAI-compatible `/v1/chat/completions` shim. Some models produce garbled, off-topic responses through this shim even when they work correctly via Ollama's native `/api/chat` endpoint. If agents fail with "no JSON object in agent response", this is the likely cause — verify by curling Ollama's native endpoint directly with the same prompt.
+
+```bash
+FALANX_MODEL='ollama/<model-name>' \
+falanx run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+```
+
+No `ANTHROPIC_API_KEY` needed for Ollama models. `FALANX_MAX_DIFF_CHARS=6000` helps keep diffs within smaller context windows.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FALANX_MODEL` | `anthropic/claude-opus-4-7` | Model ID (`anthropic/...`, `ollama/...`) |
+| `ANTHROPIC_API_KEY` | — | Required for Anthropic models |
+| `FALANX_DRY_RUN` | `false` | Use mock provider, no LLM calls |
+| `FALANX_MAX_DIFF_CHARS` | `20000` | Truncate large diffs before sending |
+| `FALANX_SESSION_DIR` | `~/.falanx/sessions` | Where JSONL audit trails are written |
+| `FALANX_MAX_ITER` | `3` | Default loop iteration cap |
+| `FALANX_TARGET_SCORE` | `4.5` | Default target score for exit |
 
 ---
 

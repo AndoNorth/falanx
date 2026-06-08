@@ -47,9 +47,9 @@ impl FalanxConfig {
         let _ = dotenvy::dotenv();
 
         let model = std::env::var("FALANX_MODEL")
-            .unwrap_or_else(|_| "opencode/big-pickle".into());
+            .unwrap_or_else(|_| "anthropic/claude-opus-4-7".into());
 
-        let api_key = std::env::var("OPENCODE_API_KEY").unwrap_or_default();
+        let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
 
         let base_url = std::env::var("FALANX_BASE_URL").ok();
 
@@ -91,7 +91,7 @@ impl FalanxConfig {
     pub fn validate(&self) -> anyhow::Result<()> {
         if !self.provider.dry_run && self.provider.api_key.is_empty() && !self.provider.is_keyless_local() {
             anyhow::bail!(
-                "OPENCODE_API_KEY is required when not in dry-run mode. \
+                "ANTHROPIC_API_KEY is required when not in dry-run mode. \
                  Set it in your environment or use --dry-run for testing."
             );
         }
@@ -107,14 +107,14 @@ mod tests {
     fn defaults_when_env_empty() {
         unsafe {
             std::env::remove_var("FALANX_MODEL");
-            std::env::remove_var("OPENCODE_API_KEY");
+            std::env::remove_var("ANTHROPIC_API_KEY");
             std::env::remove_var("FALANX_BASE_URL");
             std::env::remove_var("FALANX_DRY_RUN");
             std::env::remove_var("FALANX_SESSION_DIR");
         }
 
         let cfg = FalanxConfig::from_env().unwrap();
-        assert_eq!(cfg.provider.model, "opencode/big-pickle");
+        assert_eq!(cfg.provider.model, "anthropic/claude-opus-4-7");
         assert_eq!(cfg.provider.api_key, "");
         assert!(!cfg.provider.dry_run);
         assert!(cfg.provider.base_url.is_none());
@@ -124,7 +124,7 @@ mod tests {
     fn validate_rejects_empty_api_key_when_not_dry_run() {
         let cfg = FalanxConfig {
             provider: ProviderConfig {
-                model: "opencode/big-pickle".into(),
+                model: "anthropic/claude-opus-4-7".into(),
                 api_key: "".into(),
                 base_url: None,
                 dry_run: false,
@@ -141,7 +141,7 @@ mod tests {
     fn validate_accepts_empty_api_key_in_dry_run() {
         let cfg = FalanxConfig {
             provider: ProviderConfig {
-                model: "opencode/big-pickle".into(),
+                model: "anthropic/claude-opus-4-7".into(),
                 api_key: "".into(),
                 base_url: None,
                 dry_run: true,
@@ -175,7 +175,7 @@ mod tests {
     fn is_keyless_local_matches_ollama_prefix() {
         let ollama = ProviderConfig { model: "ollama/llama3.1".into(), api_key: "".into(), base_url: None, dry_run: false };
         assert!(ollama.is_keyless_local());
-        let remote = ProviderConfig { model: "opencode/big-pickle".into(), api_key: "".into(), base_url: None, dry_run: false };
+        let remote = ProviderConfig { model: "anthropic/claude-opus-4-7".into(), api_key: "".into(), base_url: None, dry_run: false };
         assert!(!remote.is_keyless_local());
     }
 

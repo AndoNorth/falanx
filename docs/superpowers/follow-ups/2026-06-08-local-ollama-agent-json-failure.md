@@ -17,7 +17,7 @@ OPENCODE_API_KEY=dummy   # validate() requires a non-empty key even for keyless 
 FALANX_MAX_DIFF_CHARS=6000
 ```
 
-## Bug #1 (fixed): `--agents` CLI flag was wired to nothing
+## Bug #1 ✅ (fixed + verified): `--agents` CLI flag was wired to nothing
 
 `RunArgs.agents` (`rust/crates/falanx/src/main.rs:42`) was parsed by clap but never reached
 `RunConfig` or `orchestrator::run`. `orchestrator::run` (`orchestrator/mod.rs:23-28`) always
@@ -38,7 +38,33 @@ reproduce/verify without Ollama: `falanx run --dry-run --diff HEAD~1 --agents
 crates/falanx-engine/src/defaults/agents` should now find and load the default agent set from
 an arbitrary path (it previously errored with `agent directory 'score_readability' not found`).
 
-## Bug #2 (root cause, NOT fixable here — needs the real path reviewed)
+## Side fixes applied alongside Bug #1 ✅
+
+Three additional fixes were applied on the machine without Ollama access and verified on the Ollama machine:
+
+**`extract_output` error now includes raw response preview** (`agent/run.rs`): errors now show
+a 200-char prefix of the model's actual output. The original error discarded the text entirely.
+Confirmed working — error messages now show the garbled shim output directly.
+
+**`validate()` no longer rejects empty `ANTHROPIC_API_KEY` for Ollama models** (`config.rs`):
+`ProviderConfig::is_keyless_local()` detects `ollama/...` model strings. No more dummy key
+workaround needed.
+
+**`OPENCODE_API_KEY` → `ANTHROPIC_API_KEY`** (`config.rs`): stale env var name from a previous
+provider was renamed to match what cersei-provider actually reads. Default model updated from
+`opencode/big-pickle` to `anthropic/claude-opus-4-7`.
+
+**Prompt restructure attempt — did not resolve Bug #2** (`defaults/agents/*/prompt.md`): All 7
+agent prompts were restructured to put DIFF first and the JSON instruction last (end-of-context
+position where local models follow instructions more reliably). The root cause of the
+cersei-agent `[system hint:]` injection was identified: `runner.rs:196` appends the hint
+whenever the rendered prompt contains `"index"`, `"analyze"`, `"understand"`, etc., and every
+git diff header contains `index xxxxxxx..yyyyyyy` so injection fires on every real run. Despite
+the restructure, 3 test runs all returned different garbage with no JSON — confirmed the failure
+is transport-layer, not prompt-layer. The prompt restructure is kept as a marginal improvement
+for cloud models; it does not fix Ollama.
+
+## Bug #2 ⚠️ (root cause confirmed, upstream fix needed)
 
 ### Symptom
 
@@ -99,21 +125,22 @@ configured provider talks to a local Ollama model.
 
 ### What's worth investigating in the real path (no Ollama needed to start)
 
-- Confirm whether `cersei-provider` has *any* code path that uses Ollama's native `/api/chat`
-  or `/api/generate` instead of the OpenAI-compat shim — grep found none (`ollama` only appears
-  in the registry entry, the router's auto-detect fallback, and tests). If cersei-provider is
-  meant to support local models reliably, this looks like an upstream gap/bug to raise with
-  that crate (version pinned at `0.1.9` in `falanx-engine/Cargo.toml`).
-- Check whether a newer `cersei-provider` version handles Ollama specially (native endpoint, or
-  different message-formatting for OpenAI-compat mode).
-- If/when testing locally again: always sanity-check the model's raw response via direct curl to
-  `/api/chat` *and* `/v1/chat/completions` before assuming a falanx-side bug — the divergence
-  between the two is the smoking gun here.
-- Consider whether `falanx` should warn/refuse when `dry_run` is false and the resolved
-  provider is a known-unreliable local shim, or surface the raw model response in the error
-  (`extract_output`'s error currently discards `text`, making this class of issue much harder
-  to diagnose from the CLI output alone — adding the raw text, or at least its length/prefix, to
-  the error message would have saved significant back-and-forth).
+- **cersei-provider has no native Ollama path — confirmed.** Grepped
+  `cersei-provider-0.1.9/src/`. The `ollama` registry entry sets `api_base:
+  "http://localhost:11434/v1"` with `ApiFormat::OpenAiCompatible`. `build_provider` routes all
+  OpenAI-compat providers through `OpenAi::builder().base_url(entry.api_base)...`. No native
+  `/api/chat` or `/api/generate` path exists anywhere in 0.1.9.
+- **Check whether a newer cersei-provider version handles Ollama differently.** 0.1.9 is
+  pinned in `falanx-engine/Cargo.toml`. If upstream added a native Ollama path in a later
+  version, bumping the dependency is the cleanest fix.
+- **Alternative: implement a thin native Ollama provider in falanx itself**, bypassing
+  cersei-provider for `ollama/...` models. `build_provider` in `agent/run.rs` is the right
+  seam — it already dispatches by `cfg.provider.dry_run`; a second branch on
+  `is_keyless_local()` could construct a native `/api/chat` client directly. This avoids
+  waiting on cersei-provider upstream.
+- If/when testing locally again: curl both `/api/chat` and `/v1/chat/completions` with the
+  same messages payload before assuming a falanx-side bug — the divergence between the two is
+  the smoking gun.
 
 ### Side notes from this session (context, not action items)
 
