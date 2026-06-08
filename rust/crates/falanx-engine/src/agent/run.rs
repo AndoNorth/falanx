@@ -12,26 +12,30 @@ use cersei_agent::Agent;
 /// For JSON objects/arrays, finds the first occurrence and parses it.
 /// For text, returns the full string as-is.
 pub fn extract_output(text: &str, format: &OutputFormat) -> anyhow::Result<serde_json::Value> {
+    let preview = || {
+        let s = text.trim();
+        if s.len() > 200 { format!("{}...({}B total)", &s[..200], s.len()) } else { s.to_string() }
+    };
     match format {
         OutputFormat::JsonObject => {
             let start = text
                 .find('{')
-                .ok_or_else(|| anyhow::anyhow!("no JSON object in agent response"))?;
+                .ok_or_else(|| anyhow::anyhow!("no JSON object in agent response — got: {}", preview()))?;
             let end = text
                 .rfind('}')
-                .ok_or_else(|| anyhow::anyhow!("no JSON object end in agent response"))?;
+                .ok_or_else(|| anyhow::anyhow!("no JSON object end in agent response — got: {}", preview()))?;
             serde_json::from_str(&text[start..=end])
-                .map_err(|e| anyhow::anyhow!("failed to parse JSON object: {}", e))
+                .map_err(|e| anyhow::anyhow!("failed to parse JSON object: {} — got: {}", e, preview()))
         }
         OutputFormat::JsonArray => {
             let start = text
                 .find('[')
-                .ok_or_else(|| anyhow::anyhow!("no JSON array in agent response"))?;
+                .ok_or_else(|| anyhow::anyhow!("no JSON array in agent response — got: {}", preview()))?;
             let end = text
                 .rfind(']')
-                .ok_or_else(|| anyhow::anyhow!("no JSON array end in agent response"))?;
+                .ok_or_else(|| anyhow::anyhow!("no JSON array end in agent response — got: {}", preview()))?;
             serde_json::from_str(&text[start..=end])
-                .map_err(|e| anyhow::anyhow!("failed to parse JSON array: {}", e))
+                .map_err(|e| anyhow::anyhow!("failed to parse JSON array: {} — got: {}", e, preview()))
         }
         OutputFormat::Text => Ok(serde_json::Value::String(text.to_string())),
     }

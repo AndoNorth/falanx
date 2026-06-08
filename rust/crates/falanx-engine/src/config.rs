@@ -15,6 +15,14 @@ pub struct ProviderConfig {
     pub dry_run: bool,
 }
 
+impl ProviderConfig {
+    /// Returns true for providers that don't require an API key (e.g. local Ollama).
+    /// Matches the `env_keys: &[]` entries in cersei-provider's registry.
+    pub fn is_keyless_local(&self) -> bool {
+        self.model.starts_with("ollama/")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
     pub dir: PathBuf,
@@ -81,7 +89,7 @@ impl FalanxConfig {
     }
 
     pub fn validate(&self) -> anyhow::Result<()> {
-        if !self.provider.dry_run && self.provider.api_key.is_empty() {
+        if !self.provider.dry_run && self.provider.api_key.is_empty() && !self.provider.is_keyless_local() {
             anyhow::bail!(
                 "OPENCODE_API_KEY is required when not in dry-run mode. \
                  Set it in your environment or use --dry-run for testing."
@@ -144,6 +152,31 @@ mod tests {
             loop_cfg: LoopConfig::default(),
         };
         assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_empty_api_key_for_ollama() {
+        let cfg = FalanxConfig {
+            provider: ProviderConfig {
+                model: "ollama/llama3.1".into(),
+                api_key: "".into(),
+                base_url: None,
+                dry_run: false,
+            },
+            session: SessionConfig {
+                dir: PathBuf::from("/tmp/falanx-test"),
+            },
+            loop_cfg: LoopConfig::default(),
+        };
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn is_keyless_local_matches_ollama_prefix() {
+        let ollama = ProviderConfig { model: "ollama/llama3.1".into(), api_key: "".into(), base_url: None, dry_run: false };
+        assert!(ollama.is_keyless_local());
+        let remote = ProviderConfig { model: "opencode/big-pickle".into(), api_key: "".into(), base_url: None, dry_run: false };
+        assert!(!remote.is_keyless_local());
     }
 
     #[test]

@@ -132,6 +132,7 @@ mod tests {
             target: ReviewTarget::File(f),
             loop_cfg: cfg.loop_cfg.clone(),
             session,
+            agents_dir: Some(agents_dir.clone()),
         };
 
         // Run with a minimal workflow that only has one agent
