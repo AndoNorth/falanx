@@ -131,9 +131,12 @@ async fn cmd_list_sessions() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("{:<38} {:<24} {}", "SESSION ID", "STARTED", "ITERATIONS");
+    println!("{:<38} {:<24} ITERATIONS", "SESSION ID", "STARTED");
     for meta in &sessions {
-        let iters = meta.iterations.map(|i| i.to_string()).unwrap_or_else(|| "-".into());
+        let iters = meta
+            .iterations
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "-".into());
         println!(
             "{:<38} {:<24} {}",
             meta.id.0,

@@ -3,9 +3,18 @@ pub struct HorizonState {
     pub max_resets: u32,
 }
 
+impl Default for HorizonState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HorizonState {
     pub fn new() -> Self {
-        Self { reset_count: 0, max_resets: 2 }
+        Self {
+            reset_count: 0,
+            max_resets: 2,
+        }
     }
 
     pub fn should_reset(&self, plateau: bool) -> bool {

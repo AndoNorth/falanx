@@ -1,8 +1,5 @@
 use crate::{
-    agent::AgentDef,
-    config::FalanxConfig,
-    provider::MockProvider,
-    types::AgentRunResult,
+    agent::AgentDef, config::FalanxConfig, provider::MockProvider, types::AgentRunResult,
     workflow::stage::OutputFormat,
 };
 use cersei_agent::Agent;
@@ -14,28 +11,34 @@ use cersei_agent::Agent;
 pub fn extract_output(text: &str, format: &OutputFormat) -> anyhow::Result<serde_json::Value> {
     let preview = || {
         let s = text.trim();
-        if s.len() > 200 { format!("{}...({}B total)", &s[..200], s.len()) } else { s.to_string() }
+        if s.len() > 200 {
+            format!("{}...({}B total)", &s[..200], s.len())
+        } else {
+            s.to_string()
+        }
     };
     match format {
         OutputFormat::JsonObject => {
-            let start = text
-                .find('{')
-                .ok_or_else(|| anyhow::anyhow!("no JSON object in agent response — got: {}", preview()))?;
-            let end = text
-                .rfind('}')
-                .ok_or_else(|| anyhow::anyhow!("no JSON object end in agent response — got: {}", preview()))?;
-            serde_json::from_str(&text[start..=end])
-                .map_err(|e| anyhow::anyhow!("failed to parse JSON object: {} — got: {}", e, preview()))
+            let start = text.find('{').ok_or_else(|| {
+                anyhow::anyhow!("no JSON object in agent response — got: {}", preview())
+            })?;
+            let end = text.rfind('}').ok_or_else(|| {
+                anyhow::anyhow!("no JSON object end in agent response — got: {}", preview())
+            })?;
+            serde_json::from_str(&text[start..=end]).map_err(|e| {
+                anyhow::anyhow!("failed to parse JSON object: {} — got: {}", e, preview())
+            })
         }
         OutputFormat::JsonArray => {
-            let start = text
-                .find('[')
-                .ok_or_else(|| anyhow::anyhow!("no JSON array in agent response — got: {}", preview()))?;
-            let end = text
-                .rfind(']')
-                .ok_or_else(|| anyhow::anyhow!("no JSON array end in agent response — got: {}", preview()))?;
-            serde_json::from_str(&text[start..=end])
-                .map_err(|e| anyhow::anyhow!("failed to parse JSON array: {} — got: {}", e, preview()))
+            let start = text.find('[').ok_or_else(|| {
+                anyhow::anyhow!("no JSON array in agent response — got: {}", preview())
+            })?;
+            let end = text.rfind(']').ok_or_else(|| {
+                anyhow::anyhow!("no JSON array end in agent response — got: {}", preview())
+            })?;
+            serde_json::from_str(&text[start..=end]).map_err(|e| {
+                anyhow::anyhow!("failed to parse JSON array: {} — got: {}", e, preview())
+            })
         }
         OutputFormat::Text => Ok(serde_json::Value::String(text.to_string())),
     }
@@ -87,7 +90,9 @@ async fn run_cersei(
     })
 }
 
-fn build_provider(cfg: &FalanxConfig) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
+fn build_provider(
+    cfg: &FalanxConfig,
+) -> anyhow::Result<(Box<dyn cersei_provider::Provider>, String)> {
     if cfg.provider.dry_run {
         Ok((Box::new(MockProvider), cfg.provider.model.clone()))
     } else {

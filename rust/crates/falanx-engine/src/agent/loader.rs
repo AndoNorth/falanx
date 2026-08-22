@@ -1,5 +1,5 @@
-use std::path::Path;
 use crate::agent::{AgentDef, AgentKind};
+use std::path::Path;
 
 #[derive(serde::Deserialize)]
 struct AgentConfig {
@@ -45,7 +45,11 @@ mod tests {
         fs::create_dir_all(&agent_dir).unwrap();
         fs::write(agent_dir.join("system.md"), "You are a reviewer.").unwrap();
         fs::write(agent_dir.join("prompt.md"), "Review: {{ diff }}").unwrap();
-        fs::write(agent_dir.join("config.yaml"), format!("kind: cersei\nmax_turns: {}", max_turns)).unwrap();
+        fs::write(
+            agent_dir.join("config.yaml"),
+            format!("kind: cersei\nmax_turns: {}", max_turns),
+        )
+        .unwrap();
         agent_dir
     }
 

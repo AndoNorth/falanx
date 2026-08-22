@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::orchestrator::horizon::HorizonState;
 use crate::{
     agent::{loader::load_from_dir, run::run_agent},
     config::FalanxConfig,
@@ -7,12 +8,11 @@ use crate::{
     session::{Session, SessionEvent},
     types::AgentRunResult,
     workflow::{
+        WorkflowConfig,
         context::TemplateContext,
         stage::{StageConfig, StageResult},
-        WorkflowConfig,
     },
 };
-use crate::orchestrator::horizon::HorizonState;
 
 pub struct WorkflowRunner<'a> {
     workflow: &'a WorkflowConfig,
@@ -28,7 +28,12 @@ impl<'a> WorkflowRunner<'a> {
         session: &'a Session,
         agents_dir: &Path,
     ) -> Self {
-        Self { workflow, cfg, session, agents_dir: agents_dir.to_path_buf() }
+        Self {
+            workflow,
+            cfg,
+            session,
+            agents_dir: agents_dir.to_path_buf(),
+        }
     }
 
     pub async fn run(&self, diff: &str) -> anyhow::Result<orchestrator::RunResult> {
@@ -43,18 +48,21 @@ impl<'a> WorkflowRunner<'a> {
             ctx.loop_iteration = iteration;
 
             for stage_cfg in &self.workflow.stages {
-                if let Some(skip_if) = &stage_cfg.skip_if {
-                    if skip_if.evaluate(&ctx, self.workflow.loop_cfg.target_score) {
-                        self.session.append(SessionEvent::StageSkipped {
-                            stage_id: stage_cfg.id.clone(),
-                            condition: format!("{:?}", skip_if),
-                            iteration,
-                        })?;
-                        continue;
-                    }
+                if let Some(skip_if) = &stage_cfg.skip_if
+                    && skip_if.evaluate(&ctx, self.workflow.loop_cfg.target_score)
+                {
+                    self.session.append(SessionEvent::StageSkipped {
+                        stage_id: stage_cfg.id.clone(),
+                        condition: format!("{:?}", skip_if),
+                        iteration,
+                    })?;
+                    continue;
                 }
                 let stage_result = self.run_stage(stage_cfg, &ctx).await?;
-                ctx.stages.insert(stage_cfg.output_as.clone(), stage_result.synthesised.clone());
+                ctx.stages.insert(
+                    stage_cfg.output_as.clone(),
+                    stage_result.synthesised.clone(),
+                );
                 self.session.append(SessionEvent::StageCompleted {
                     stage_id: stage_cfg.id.clone(),
                     output_as: stage_cfg.output_as.clone(),
@@ -86,7 +94,8 @@ impl<'a> WorkflowRunner<'a> {
                     horizon.record_reset();
                     plateau_streak = 0;
                     prev_composite = None;
-                    self.session.append(SessionEvent::HorizonReset { iteration })?;
+                    self.session
+                        .append(SessionEvent::HorizonReset { iteration })?;
                 } else {
                     break 'run ctx;
                 }
@@ -100,10 +109,18 @@ impl<'a> WorkflowRunner<'a> {
             summary: summary.clone(),
         })?;
 
-        Ok(orchestrator::RunResult { iterations: iteration, session_id, summary })
+        Ok(orchestrator::RunResult {
+            iterations: iteration,
+            session_id,
+            summary,
+        })
     }
 
-    async fn run_stage(&self, stage_cfg: &StageConfig, ctx: &TemplateContext) -> anyhow::Result<StageResult> {
+    async fn run_stage(
+        &self,
+        stage_cfg: &StageConfig,
+        ctx: &TemplateContext,
+    ) -> anyhow::Result<StageResult> {
         self.session.append(SessionEvent::StageStarted {
             stage_id: stage_cfg.id.clone(),
             iteration: ctx.loop_iteration,
@@ -121,8 +138,16 @@ impl<'a> WorkflowRunner<'a> {
                 iteration: ctx.loop_iteration,
             })?;
 
-            let result = run_agent(&def, &rendered, self.cfg, &stage_cfg.output_format).await
-                .map_err(|e| anyhow::anyhow!("agent '{}' in stage '{}' failed: {}", agent_name, stage_cfg.id, e))?;
+            let result = run_agent(&def, &rendered, self.cfg, &stage_cfg.output_format)
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "agent '{}' in stage '{}' failed: {}",
+                        agent_name,
+                        stage_cfg.id,
+                        e
+                    )
+                })?;
 
             self.session.append(SessionEvent::AgentCompleted {
                 stage_id: stage_cfg.id.clone(),
@@ -137,7 +162,11 @@ impl<'a> WorkflowRunner<'a> {
 
         let synthesised = synthesise_runs(&runs);
 
-        Ok(StageResult { stage_id: stage_cfg.id.clone(), runs, synthesised })
+        Ok(StageResult {
+            stage_id: stage_cfg.id.clone(),
+            runs,
+            synthesised,
+        })
     }
 }
 
@@ -145,11 +174,17 @@ fn synthesise_runs(runs: &[AgentRunResult]) -> serde_json::Value {
     if runs.len() == 1 {
         runs[0].extracted.clone()
     } else {
-        let arr = runs.iter().map(|r| {
-            let mut obj = r.extracted.as_object().cloned().unwrap_or_default();
-            obj.insert("agent".to_string(), serde_json::Value::String(r.agent_name.clone()));
-            serde_json::Value::Object(obj)
-        }).collect();
+        let arr = runs
+            .iter()
+            .map(|r| {
+                let mut obj = r.extracted.as_object().cloned().unwrap_or_default();
+                obj.insert(
+                    "agent".to_string(),
+                    serde_json::Value::String(r.agent_name.clone()),
+                );
+                serde_json::Value::Object(obj)
+            })
+            .collect();
         serde_json::Value::Array(arr)
     }
 }
@@ -159,7 +194,8 @@ fn composite_from_ctx(ctx: &TemplateContext) -> f32 {
         Some(a) if !a.is_empty() => a,
         _ => return 0.0,
     };
-    let sum: f32 = arr.iter()
+    let sum: f32 = arr
+        .iter()
         .filter_map(|v| v.get("score").and_then(|s| s.as_f64()))
         .map(|s| s as f32)
         .sum();
@@ -177,8 +213,15 @@ mod tests {
 
     fn dry_cfg() -> FalanxConfig {
         FalanxConfig {
-            provider: ProviderConfig { model: "mock".into(), api_key: "".into(), base_url: None, dry_run: true },
-            session: SessionConfig { dir: std::path::PathBuf::from("/tmp") },
+            provider: ProviderConfig {
+                model: "mock".into(),
+                api_key: "".into(),
+                base_url: None,
+                dry_run: true,
+            },
+            session: SessionConfig {
+                dir: std::path::PathBuf::from("/tmp"),
+            },
             loop_cfg: LoopConfig::default(),
         }
     }
@@ -200,13 +243,25 @@ stages:
     output_format: json_object
     output_as: score_result
 "#;
-        let workflow = WorkflowConfig::from_str(yaml).unwrap();
+        let workflow = WorkflowConfig::from_yaml(yaml).unwrap();
 
         let agents_dir = dir.path().join("agents");
         std::fs::create_dir_all(agents_dir.join("score_readability")).unwrap();
-        std::fs::write(agents_dir.join("score_readability/system.md"), "You are a code quality reviewer.").unwrap();
-        std::fs::write(agents_dir.join("score_readability/prompt.md"), "score: {{ diff }}").unwrap();
-        std::fs::write(agents_dir.join("score_readability/config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
+        std::fs::write(
+            agents_dir.join("score_readability/system.md"),
+            "You are a code quality reviewer.",
+        )
+        .unwrap();
+        std::fs::write(
+            agents_dir.join("score_readability/prompt.md"),
+            "score: {{ diff }}",
+        )
+        .unwrap();
+        std::fs::write(
+            agents_dir.join("score_readability/config.yaml"),
+            "kind: cersei\nmax_turns: 1",
+        )
+        .unwrap();
 
         let runner = WorkflowRunner::new(&workflow, &cfg, &session, &agents_dir);
         let result = runner.run("fn foo() {}").await.unwrap();
@@ -248,7 +303,7 @@ stages:
     output_as: rewrite_result
     skip_if: no_review_issues
 "#;
-        let workflow = WorkflowConfig::from_str(yaml).unwrap();
+        let workflow = WorkflowConfig::from_yaml(yaml).unwrap();
 
         // Create all 3 agents with system prompts that match MockProvider routing
         let agents_dir = dir.path().join("agents");
@@ -260,7 +315,11 @@ stages:
             std::fs::create_dir_all(agents_dir.join(name)).unwrap();
             std::fs::write(agents_dir.join(name).join("system.md"), system).unwrap();
             std::fs::write(agents_dir.join(name).join("prompt.md"), "{{ diff }}").unwrap();
-            std::fs::write(agents_dir.join(name).join("config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
+            std::fs::write(
+                agents_dir.join(name).join("config.yaml"),
+                "kind: cersei\nmax_turns: 1",
+            )
+            .unwrap();
         }
 
         let runner = WorkflowRunner::new(&workflow, &cfg, &session, &agents_dir);
@@ -270,19 +329,33 @@ stages:
 
         // Verify all three stages ran (score, review, rewrite)
         let content = std::fs::read_to_string(session.path()).unwrap();
-        let events: Vec<serde_json::Value> = content.lines()
+        let events: Vec<serde_json::Value> = content
+            .lines()
             .filter_map(|l| serde_json::from_str(l).ok())
             .collect();
 
-        let stage_ids: Vec<&str> = events.iter()
+        let stage_ids: Vec<&str> = events
+            .iter()
             .filter(|e| e["type"] == "stage_completed")
             .filter_map(|e| e["stage_id"].as_str())
             .collect();
 
-        assert!(stage_ids.contains(&"score"), "score stage missing: {:?}", stage_ids);
+        assert!(
+            stage_ids.contains(&"score"),
+            "score stage missing: {:?}",
+            stage_ids
+        );
         // Score is 3.0 (mock), target is 5.0, so review should run
-        assert!(stage_ids.contains(&"review"), "review stage missing: {:?}", stage_ids);
+        assert!(
+            stage_ids.contains(&"review"),
+            "review stage missing: {:?}",
+            stage_ids
+        );
         // Mock review returns non-empty issues, so rewrite should run
-        assert!(stage_ids.contains(&"rewrite"), "rewrite stage missing: {:?}", stage_ids);
+        assert!(
+            stage_ids.contains(&"rewrite"),
+            "rewrite stage missing: {:?}",
+            stage_ids
+        );
     }
 }

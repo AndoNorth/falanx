@@ -21,7 +21,7 @@ pub struct WorkflowConfig {
 }
 
 impl WorkflowConfig {
-    pub fn from_str(yaml: &str) -> anyhow::Result<Self> {
+    pub fn from_yaml(yaml: &str) -> anyhow::Result<Self> {
         let wf: Self = serde_yaml::from_str(yaml)
             .map_err(|e| anyhow::anyhow!("invalid workflow YAML: {}", e))?;
         for stage in &wf.stages {
@@ -36,16 +36,17 @@ impl WorkflowConfig {
             .unwrap_or_else(|| std::path::PathBuf::from(".falanx/workflow.yaml"));
 
         if override_path.exists() {
-            let yaml = std::fs::read_to_string(&override_path)
-                .map_err(|e| anyhow::anyhow!("failed to read {}: {}", override_path.display(), e))?;
-            Self::from_str(&yaml)
+            let yaml = std::fs::read_to_string(&override_path).map_err(|e| {
+                anyhow::anyhow!("failed to read {}: {}", override_path.display(), e)
+            })?;
+            Self::from_yaml(&yaml)
         } else {
             Self::load_default()
         }
     }
 
     pub fn load_default() -> anyhow::Result<Self> {
-        Self::from_str(DEFAULT_WORKFLOW)
+        Self::from_yaml(DEFAULT_WORKFLOW)
     }
 }
 
@@ -72,7 +73,7 @@ stages:
 
     #[test]
     fn parses_minimal_workflow() {
-        let wf = WorkflowConfig::from_str(MINIMAL_YAML).unwrap();
+        let wf = WorkflowConfig::from_yaml(MINIMAL_YAML).unwrap();
         assert_eq!(wf.loop_cfg.max_iterations, 3);
         assert!((wf.loop_cfg.target_score - 4.0).abs() < f32::EPSILON);
         assert_eq!(wf.stages.len(), 2);
@@ -94,7 +95,7 @@ stages:
     output_format: text
     output_as: out
 "#;
-        let err = WorkflowConfig::from_str(bad).unwrap_err();
+        let err = WorkflowConfig::from_yaml(bad).unwrap_err();
         assert!(err.to_string().contains("agent"));
     }
 

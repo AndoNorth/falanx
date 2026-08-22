@@ -102,10 +102,7 @@ impl Provider for MockProvider {
         ProviderCapabilities::default()
     }
 
-    async fn complete(
-        &self,
-        request: CompletionRequest,
-    ) -> cersei_types::Result<CompletionStream> {
+    async fn complete(&self, request: CompletionRequest) -> cersei_types::Result<CompletionStream> {
         Ok(Self::static_stream(Self::response_for(&request)))
     }
 }

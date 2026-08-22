@@ -16,11 +16,26 @@ pub struct SessionEntry {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
-    RunStarted   { session_id: String, target: String, workflow: String },
-    RunFailed    { reason: String },
-    HorizonReset { iteration: u32 },
-    StageStarted   { stage_id: String, iteration: u32 },
-    AgentStarted   { stage_id: String, agent_name: String, iteration: u32 },
+    RunStarted {
+        session_id: String,
+        target: String,
+        workflow: String,
+    },
+    RunFailed {
+        reason: String,
+    },
+    HorizonReset {
+        iteration: u32,
+    },
+    StageStarted {
+        stage_id: String,
+        iteration: u32,
+    },
+    AgentStarted {
+        stage_id: String,
+        agent_name: String,
+        iteration: u32,
+    },
     AgentCompleted {
         stage_id: String,
         agent_name: String,
@@ -28,9 +43,21 @@ pub enum SessionEvent {
         output: serde_json::Value,
         iteration: u32,
     },
-    StageCompleted { stage_id: String, output_as: String, result: serde_json::Value, iteration: u32 },
-    StageSkipped   { stage_id: String, condition: String, iteration: u32 },
-    RunCompleted   { iterations: u32, summary: serde_json::Value },
+    StageCompleted {
+        stage_id: String,
+        output_as: String,
+        result: serde_json::Value,
+        iteration: u32,
+    },
+    StageSkipped {
+        stage_id: String,
+        condition: String,
+        iteration: u32,
+    },
+    RunCompleted {
+        iterations: u32,
+        summary: serde_json::Value,
+    },
 }
 
 pub struct Session {
@@ -53,7 +80,13 @@ impl Session {
     pub fn new(dir: &Path, label: &str) -> anyhow::Result<Self> {
         let safe_label = label
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
 
         let session_dir = dir.join(&safe_label);
@@ -151,7 +184,10 @@ impl Session {
             } else {
                 match serde_json::from_str::<SessionEntry>(&last_line) {
                     Ok(entry) => match entry.event {
-                        SessionEvent::RunCompleted { iterations, summary } => (Some(summary), Some(iterations)),
+                        SessionEvent::RunCompleted {
+                            iterations,
+                            summary,
+                        } => (Some(summary), Some(iterations)),
                         _ => (None, None),
                     },
                     Err(_) => (None, None),
@@ -301,7 +337,12 @@ mod tests {
     fn stage_started_serialises() {
         let dir = tempfile::tempdir().unwrap();
         let session = Session::new(dir.path(), "t").unwrap();
-        session.append(SessionEvent::StageStarted { stage_id: "score".into(), iteration: 0 }).unwrap();
+        session
+            .append(SessionEvent::StageStarted {
+                stage_id: "score".into(),
+                iteration: 0,
+            })
+            .unwrap();
         let content = std::fs::read_to_string(session.path()).unwrap();
         let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(v["type"], "stage_started");
@@ -312,13 +353,15 @@ mod tests {
     fn agent_completed_serialises_with_output() {
         let dir = tempfile::tempdir().unwrap();
         let session = Session::new(dir.path(), "t").unwrap();
-        session.append(SessionEvent::AgentCompleted {
-            stage_id: "score".into(),
-            agent_name: "score_readability".into(),
-            turns_used: 1,
-            output: serde_json::json!({"score": 4, "reasoning": "ok"}),
-            iteration: 0,
-        }).unwrap();
+        session
+            .append(SessionEvent::AgentCompleted {
+                stage_id: "score".into(),
+                agent_name: "score_readability".into(),
+                turns_used: 1,
+                output: serde_json::json!({"score": 4, "reasoning": "ok"}),
+                iteration: 0,
+            })
+            .unwrap();
         let content = std::fs::read_to_string(session.path()).unwrap();
         let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(v["type"], "agent_completed");
@@ -330,15 +373,19 @@ mod tests {
     fn run_completed_carries_summary() {
         let dir = tempfile::tempdir().unwrap();
         let session = Session::new(dir.path(), "t").unwrap();
-        session.append(SessionEvent::RunStarted {
-            session_id: session.id().0.clone(),
-            target: "HEAD~1".into(),
-            workflow: "default".into(),
-        }).unwrap();
-        session.append(SessionEvent::RunCompleted {
-            iterations: 2,
-            summary: serde_json::json!({"score_result": []}),
-        }).unwrap();
+        session
+            .append(SessionEvent::RunStarted {
+                session_id: session.id().0.clone(),
+                target: "HEAD~1".into(),
+                workflow: "default".into(),
+            })
+            .unwrap();
+        session
+            .append(SessionEvent::RunCompleted {
+                iterations: 2,
+                summary: serde_json::json!({"score_result": []}),
+            })
+            .unwrap();
         let sessions = Session::list(dir.path()).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].iterations, Some(2));

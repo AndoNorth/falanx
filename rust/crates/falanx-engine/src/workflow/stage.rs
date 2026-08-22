@@ -67,7 +67,10 @@ impl StageConfig {
         let has_single = self.agent.is_some();
         let has_multi = !self.agents.is_empty();
         match (has_single, has_multi) {
-            (true, true) => anyhow::bail!("stage '{}': set either 'agent' or 'agents', not both", self.id),
+            (true, true) => anyhow::bail!(
+                "stage '{}': set either 'agent' or 'agents', not both",
+                self.id
+            ),
             (false, false) => anyhow::bail!("stage '{}': must set 'agent' or 'agents'", self.id),
             _ => Ok(()),
         }
@@ -105,7 +108,7 @@ mod tests {
     #[test]
     fn skip_if_unknown_fails_deserialisation() {
         let err = serde_yaml::from_str::<SkipIf>("fly_to_moon").unwrap_err();
-        assert!(err.to_string().len() > 0);
+        assert!(!err.to_string().is_empty());
     }
 
     #[test]
@@ -131,7 +134,10 @@ output_format: json_object
 output_as: score_result
 "#;
         let stage: StageConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(stage.agent_names(), vec!["score_readability", "score_security"]);
+        assert_eq!(
+            stage.agent_names(),
+            vec!["score_readability", "score_security"]
+        );
     }
 
     #[test]

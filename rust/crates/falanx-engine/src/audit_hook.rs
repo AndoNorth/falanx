@@ -19,17 +19,17 @@ impl Hook for FalanxAuditHook {
     }
 
     fn events(&self) -> &[HookEvent] {
-        &[HookEvent::PreToolUse, HookEvent::PostToolUse, HookEvent::Stop]
+        &[
+            HookEvent::PreToolUse,
+            HookEvent::PostToolUse,
+            HookEvent::Stop,
+        ]
     }
 
     async fn on_event(&self, ctx: &HookContext) -> HookAction {
         match ctx.event {
             HookEvent::PreToolUse => {
-                let agent = ctx
-                    .tool_name
-                    .as_deref()
-                    .unwrap_or("unknown")
-                    .to_string();
+                let agent = ctx.tool_name.as_deref().unwrap_or("unknown").to_string();
                 let _ = self.session.append(SessionEvent::AgentStarted {
                     stage_id: "unknown".to_string(),
                     agent_name: agent,
@@ -59,7 +59,10 @@ mod tests {
     fn audit_hook_name() {
         let dir = tempfile::tempdir().unwrap();
         let session = Arc::new(Session::new(dir.path(), "test").unwrap());
-        let hook = FalanxAuditHook { session, iteration: 0 };
+        let hook = FalanxAuditHook {
+            session,
+            iteration: 0,
+        };
         assert_eq!(hook.name(), "falanx-audit");
     }
 }

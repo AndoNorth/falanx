@@ -5,7 +5,7 @@ use crate::{
     git::ReviewTarget,
     session::{Session, SessionEvent},
     types::SessionId,
-    workflow::{runner::WorkflowRunner, WorkflowConfig},
+    workflow::{WorkflowConfig, runner::WorkflowRunner},
 };
 
 pub struct RunConfig {
@@ -22,10 +22,7 @@ pub struct RunResult {
 }
 
 pub async fn run(config: RunConfig, falanx_cfg: &FalanxConfig) -> anyhow::Result<RunResult> {
-    let agents_dir = config
-        .agents_dir
-        .clone()
-        .unwrap_or_else(resolve_agents_dir);
+    let agents_dir = config.agents_dir.clone().unwrap_or_else(resolve_agents_dir);
     let workflow = WorkflowConfig::load(Some(&agents_dir))
         .map_err(|e| anyhow::anyhow!("failed to load workflow: {}", e))?;
     run_with_workflow_and_agents(config, falanx_cfg, workflow, &agents_dir).await
@@ -37,7 +34,7 @@ pub async fn run_with_workflow(
     workflow_yaml: &str,
     agents_dir: &std::path::Path,
 ) -> anyhow::Result<RunResult> {
-    let workflow = WorkflowConfig::from_str(workflow_yaml)?;
+    let workflow = WorkflowConfig::from_yaml(workflow_yaml)?;
     run_with_workflow_and_agents(config, falanx_cfg, workflow, agents_dir).await
 }
 
@@ -47,7 +44,12 @@ async fn run_with_workflow_and_agents(
     mut workflow: WorkflowConfig,
     agents_dir: &std::path::Path,
 ) -> anyhow::Result<RunResult> {
-    let RunConfig { target, loop_cfg, session, .. } = config;
+    let RunConfig {
+        target,
+        loop_cfg,
+        session,
+        ..
+    } = config;
     let session_id = session.id().clone();
 
     let diff = target.extract_diff()?;
@@ -56,7 +58,11 @@ async fn run_with_workflow_and_agents(
         .and_then(|v| v.parse().ok())
         .unwrap_or(20_000);
     let diff_text: String = if diff.0.len() > max_diff_chars {
-        tracing::warn!(original = diff.0.len(), truncated_to = max_diff_chars, "diff truncated");
+        tracing::warn!(
+            original = diff.0.len(),
+            truncated_to = max_diff_chars,
+            "diff truncated"
+        );
         diff.0.chars().take(max_diff_chars).collect()
     } else {
         diff.0.clone()
@@ -83,12 +89,12 @@ fn resolve_agents_dir() -> std::path::PathBuf {
         return local;
     }
     // Fall back to defaults dir relative to binary location
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let candidate = parent.join("defaults/agents");
-            if candidate.exists() {
-                return candidate;
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        let candidate = parent.join("defaults/agents");
+        if candidate.exists() {
+            return candidate;
         }
     }
     local
@@ -105,8 +111,15 @@ mod tests {
 
     fn dry_cfg(dir: &std::path::Path) -> FalanxConfig {
         FalanxConfig {
-            provider: ProviderConfig { model: "mock".into(), api_key: "".into(), base_url: None, dry_run: true },
-            session: SessionConfig { dir: dir.to_path_buf() },
+            provider: ProviderConfig {
+                model: "mock".into(),
+                api_key: "".into(),
+                base_url: None,
+                dry_run: true,
+            },
+            session: SessionConfig {
+                dir: dir.to_path_buf(),
+            },
             loop_cfg: LoopConfig::default(),
         }
     }
@@ -123,9 +136,17 @@ mod tests {
         // Create a minimal agents dir for this test
         let agents_dir = dir.path().join(".falanx/agents");
         std::fs::create_dir_all(agents_dir.join("score_readability")).unwrap();
-        std::fs::write(agents_dir.join("score_readability/system.md"), "You are a code quality reviewer.").unwrap();
+        std::fs::write(
+            agents_dir.join("score_readability/system.md"),
+            "You are a code quality reviewer.",
+        )
+        .unwrap();
         std::fs::write(agents_dir.join("score_readability/prompt.md"), "{{ diff }}").unwrap();
-        std::fs::write(agents_dir.join("score_readability/config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
+        std::fs::write(
+            agents_dir.join("score_readability/config.yaml"),
+            "kind: cersei\nmax_turns: 1",
+        )
+        .unwrap();
 
         let session = Session::new(&cfg.session.dir, "test").unwrap();
         let run_cfg = RunConfig {
@@ -136,7 +157,10 @@ mod tests {
         };
 
         // Run with a minimal workflow that only has one agent
-        let result = run_with_workflow(run_cfg, &cfg, r#"
+        let result = run_with_workflow(
+            run_cfg,
+            &cfg,
+            r#"
 loop:
   max_iterations: 1
   target_score: 5.0
@@ -146,7 +170,11 @@ stages:
     agents: [score_readability]
     output_format: json_object
     output_as: score_result
-"#, &agents_dir).await.unwrap();
+"#,
+            &agents_dir,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.iterations, 1);
         assert!(!result.session_id.0.is_empty());

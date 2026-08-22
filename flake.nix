@@ -14,6 +14,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane.url = "github:ipetkov/crane";
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
@@ -34,6 +38,8 @@
       load-config = i:
         i.map (p: (inputs.flake-parts.lib.importApply p {inherit self lib inputs;}));
     in {
+      imports = [inputs.git-hooks.flakeModule];
+
       perSystem = {config, ...}: {
         imports = [
           (lib.pipe import-tree [is-config load-config] ./.)

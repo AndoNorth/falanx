@@ -37,7 +37,11 @@ pub struct LoopConfig {
 
 impl Default for LoopConfig {
     fn default() -> Self {
-        Self { max_iter: 3, target_score: 4.5, plateau_threshold: 0.1 }
+        Self {
+            max_iter: 3,
+            target_score: 4.5,
+            plateau_threshold: 0.1,
+        }
     }
 }
 
@@ -46,8 +50,8 @@ impl FalanxConfig {
         // Load .env file if present, ignore error if missing
         let _ = dotenvy::dotenv();
 
-        let model = std::env::var("FALANX_MODEL")
-            .unwrap_or_else(|_| "anthropic/claude-opus-4-7".into());
+        let model =
+            std::env::var("FALANX_MODEL").unwrap_or_else(|_| "anthropic/claude-opus-4-7".into());
 
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
 
@@ -82,14 +86,26 @@ impl FalanxConfig {
             .unwrap_or(0.1f32);
 
         Ok(Self {
-            provider: ProviderConfig { model, api_key, base_url, dry_run },
+            provider: ProviderConfig {
+                model,
+                api_key,
+                base_url,
+                dry_run,
+            },
             session: SessionConfig { dir },
-            loop_cfg: LoopConfig { max_iter, target_score, plateau_threshold },
+            loop_cfg: LoopConfig {
+                max_iter,
+                target_score,
+                plateau_threshold,
+            },
         })
     }
 
     pub fn validate(&self) -> anyhow::Result<()> {
-        if !self.provider.dry_run && self.provider.api_key.is_empty() && !self.provider.is_keyless_local() {
+        if !self.provider.dry_run
+            && self.provider.api_key.is_empty()
+            && !self.provider.is_keyless_local()
+        {
             anyhow::bail!(
                 "ANTHROPIC_API_KEY is required when not in dry-run mode. \
                  Set it in your environment or use --dry-run for testing."
@@ -173,9 +189,19 @@ mod tests {
 
     #[test]
     fn is_keyless_local_matches_ollama_prefix() {
-        let ollama = ProviderConfig { model: "ollama/llama3.1".into(), api_key: "".into(), base_url: None, dry_run: false };
+        let ollama = ProviderConfig {
+            model: "ollama/llama3.1".into(),
+            api_key: "".into(),
+            base_url: None,
+            dry_run: false,
+        };
         assert!(ollama.is_keyless_local());
-        let remote = ProviderConfig { model: "anthropic/claude-opus-4-7".into(), api_key: "".into(), base_url: None, dry_run: false };
+        let remote = ProviderConfig {
+            model: "anthropic/claude-opus-4-7".into(),
+            api_key: "".into(),
+            base_url: None,
+            dry_run: false,
+        };
         assert!(!remote.is_keyless_local());
     }
 

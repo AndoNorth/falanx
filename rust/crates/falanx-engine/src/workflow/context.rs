@@ -9,7 +9,11 @@ pub struct TemplateContext {
 
 impl TemplateContext {
     pub fn new(diff: String) -> Self {
-        Self { diff, stages: HashMap::new(), loop_iteration: 0 }
+        Self {
+            diff,
+            stages: HashMap::new(),
+            loop_iteration: 0,
+        }
     }
 
     pub fn render(&self, template_str: &str) -> anyhow::Result<String> {
@@ -19,13 +23,19 @@ impl TemplateContext {
         let tmpl = env.get_template("t")?;
 
         let mut map = serde_json::Map::new();
-        map.insert("diff".to_string(), serde_json::Value::String(self.diff.clone()));
-        map.insert("loop_iteration".to_string(), serde_json::Value::Number(self.loop_iteration.into()));
+        map.insert(
+            "diff".to_string(),
+            serde_json::Value::String(self.diff.clone()),
+        );
+        map.insert(
+            "loop_iteration".to_string(),
+            serde_json::Value::Number(self.loop_iteration.into()),
+        );
         for (key, val) in &self.stages {
             map.insert(key.clone(), val.clone());
         }
 
-        let ctx_val = minijinja::Value::from_serialize(&serde_json::Value::Object(map));
+        let ctx_val = minijinja::Value::from_serialize(serde_json::Value::Object(map));
         tmpl.render(ctx_val)
             .map_err(|e| anyhow::anyhow!("template render error: {}", e))
     }
@@ -80,6 +90,6 @@ mod tests {
     fn render_errors_on_invalid_template() {
         let ctx = ctx_with_diff("");
         let err = ctx.render("{{ unclosed").unwrap_err();
-        assert!(err.to_string().len() > 0);
+        assert!(!err.to_string().is_empty());
     }
 }
