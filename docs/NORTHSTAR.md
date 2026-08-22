@@ -63,6 +63,10 @@ Automated PR review workflows - https://github.com/greptileai/skills
 
 - wrapper to closed source tool we are replicating
 
+CodeRabbit - https://www.coderabbit.ai
+
+- closed source automated PR review tool, another reference point for the category we are replicating in the open
+
 ---
 
 *If everything else disappears, this remains true: focused agents, traceable changes, no rewrite without critique.*

@@ -263,7 +263,7 @@ Key points:
 > extraction (`<score>...</score>`). What actually shipped is declarative: agents are directories
 > (`AgentDef`) composed by `workflow.yaml`, and output is extracted by `output_format`
 > (`json_object` / `json_array` / `text` — first-brace/bracket parsing, no XML tags). See
-> `ARCHITECTURE.md` and `AGENTS.md` for the current model. Kept below for historical context on
+> `ARCHITECTURE.md` and `FALANX_AGENTS.md` for the current model. Kept below for historical context on
 > where the phase/loop/horizon-reset concepts originated.
 
 Falanx's current architecture implements its own orchestration loop in Rust. Cersei is the underlying agent SDK. The Sandcastle patterns above map directly onto Cersei primitives — with one key difference: **Cersei calls LLM APIs directly, Sandcastle invokes coding agent CLIs**. The orchestration concepts — phases, structured output, prompt composition, session management, iteration control — are equivalent.
@@ -432,4 +432,4 @@ Exit conditions (orchestrator loop):
 
 ---
 
-_Reference: [Sandcastle CONTEXT.md](../../../sandcastle/CONTEXT.md) · [Falanx AGENTS.md](AGENTS.md) · [Cersei API](CERSEI.md) · [Falanx ARCHITECTURE.md](ARCHITECTURE.md)_
+_Reference: [Sandcastle CONTEXT.md](../../../sandcastle/CONTEXT.md) · [Falanx Agents](FALANX_AGENTS.md) · [Cersei API](CERSEI.md) · [Falanx ARCHITECTURE.md](ARCHITECTURE.md)_

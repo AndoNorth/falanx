@@ -1,4 +1,4 @@
-# Falanx
+# Falanx 🛡️
 
 Automated code review for your merge request diffs. Scores, critiques, and optionally rewrites code — with a full audit trail you can trust before you merge.
 
@@ -152,4 +152,4 @@ No `ANTHROPIC_API_KEY` needed for Ollama models. `FALANX_MAX_DIFF_CHARS=6000` he
 
 - [Northstar](docs/NORTHSTAR.md) — vision, quality philosophy, core promises
 - [Architecture](docs/ARCHITECTURE.md) — deployment modes, context management, session model, serve mode
-- [Agents](docs/AGENTS.md) — agent pipeline, roles, and behavioural contracts
+- [Agents](docs/FALANX_AGENTS.md) — agent pipeline, roles, and behavioural contracts
