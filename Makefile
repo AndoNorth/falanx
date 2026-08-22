@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-FALANX_VERSION := $(shell grep '^version = ' rust/crates/falanx-engine/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+FALANX_VERSION := $(shell grep '^version = ' crates/falanx-engine/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 
 # get compose command
 COMPOSE ?= $(shell \
@@ -16,11 +16,11 @@ COMPOSE ?= $(shell \
 .PHONY: validate
 validate: ## Run fmt + clippy + tests (requires nix shell)
 	@command -v cargo >/dev/null 2>&1 || { echo "Run 'nix develop' first"; exit 1; }
-	cd rust && cargo fmt --check && cargo clippy -- -D warnings && cargo nextest run --no-tests=pass
+	cargo fmt --check && cargo clippy -- -D warnings && cargo nextest run --no-tests=pass
 
 .PHONY: validate-full
 validate-full: validate ## validate + cargo audit
-	cd rust && cargo audit
+	cargo audit
 
 # ── Image ────────────────────────────────────────────────────────
 

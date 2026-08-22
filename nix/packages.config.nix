@@ -9,7 +9,7 @@
   ...
 }: let
   rustBin = inputs.rust-overlay.lib.mkRustBin {} pkgs.buildPackages;
-  toolchainData = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain;
+  toolchainData = (builtins.fromTOML (builtins.readFile ../rust-toolchain.toml)).toolchain;
   baseToolchain = rustBin.fromRustupToolchain toolchainData;
 
   crossEnvFor = target: crossPkgs: let
@@ -37,7 +37,7 @@
     commonArgs =
       {
         pname = "falanx-engine";
-        src = craneLib.cleanCargoSource ./.;
+        src = craneLib.cleanCargoSource ../.;
         cargoExtraArgs = "-p falanx-engine";
         strictDeps = true;
       }

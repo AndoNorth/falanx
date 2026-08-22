@@ -108,13 +108,13 @@ docker run -v $(pwd):/repo -p 3000:3000 falanx serve
 The mock provider runs the full pipeline with no LLM calls. Good for verifying config, agent loading, and session output:
 
 ```bash
-FALANX_DRY_RUN=true falanx run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+FALANX_DRY_RUN=true falanx run --diff HEAD~1 --agents crates/falanx-engine/src/defaults/agents
 ```
 
 Or with the flag directly:
 
 ```bash
-cargo run --bin falanx -- run --dry-run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+cargo run --bin falanx -- run --dry-run --diff HEAD~1 --agents crates/falanx-engine/src/defaults/agents
 ```
 
 Check the session output:
@@ -129,7 +129,7 @@ cat $(ls -t ~/.falanx/sessions/**/*.jsonl | head -1) | jq .
 
 ```bash
 FALANX_MODEL='ollama/<model-name>' \
-falanx run --diff HEAD~1 --agents rust/crates/falanx-engine/src/defaults/agents
+falanx run --diff HEAD~1 --agents crates/falanx-engine/src/defaults/agents
 ```
 
 No `ANTHROPIC_API_KEY` needed for Ollama models. `FALANX_MAX_DIFF_CHARS=6000` helps keep diffs within smaller context windows.
