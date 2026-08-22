@@ -1,0 +1,27 @@
+loop:
+  max_iterations: 5
+  target_score: 4.5
+  plateau_threshold: 0.1
+
+stages:
+  - id: score
+    agents:
+      - score_readability
+      - score_maintainability
+      - score_architecture
+      - score_performance
+      - score_security
+    output_format: json_object
+    output_as: score_result
+
+  - id: review
+    agent: review
+    output_format: json_array
+    output_as: review_result
+    skip_if: score_meets_target
+
+  - id: rewrite
+    agent: rewrite
+    output_format: json_array
+    output_as: rewrite_result
+    skip_if: no_review_issues

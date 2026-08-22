@@ -20,5 +20,8 @@ result
 .direnv/
 .nix-cache/
 
+# git-hooks.nix generated config
+.pre-commit-config.yaml
+
 # macOS
 .DS_Store

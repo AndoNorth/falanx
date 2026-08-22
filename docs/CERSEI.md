@@ -19,12 +19,13 @@ Source: https://github.com/pacifio/cersei
 
 ## What Falanx Owns
 
-- Orchestration sequencing and loop control
+- `WorkflowRunner` sequencing and loop control (target score, max iterations, plateau)
 - Convergence logic, plateau detection, horizon resets
-- Agent pipeline definition (CodeQualityAgent → CodeReviewAgent → CodeWritingAgent)
+- `AgentDef` model — agents declared as directories (`system.md` + `prompt.md` + `config.yaml`), composed into stages by `workflow.yaml` (not hardcoded agent types in Rust)
+- `TemplateContext` — accumulates stage outputs, passed to agent prompts via minijinja
 - Git diff extraction and input handling
-- CLI and serve mode surfaces
-- Run-level audit trail (separate from Cersei's session JSONL)
+- CLI surface (`falanx run`, `falanx list-sessions`); serve mode (MCP + HTTP) is stubbed, not yet implemented
+- Run-level JSONL audit trail via `cersei-hooks` (`SessionEvent`, separate from Cersei's own session JSONL)
 
 ---
 
@@ -443,8 +444,8 @@ impl JsonlMemory {
 
 ## Notes for Falanx Integration
 
-- Cersei agents should be used **per-pipeline-stage** — one agent instance per CodeQualityAgent / CodeReviewAgent / CodeWritingAgent invocation
-- Falanx orchestrates **between** agents; Cersei handles execution **within** an agent
+- Cersei agents should be used **per-`AgentDef` invocation** — one fresh agent instance per agent run within a workflow stage, not shared across stages or across the score/review/rewrite agents in the default workflow
+- Falanx orchestrates **between** agents via `WorkflowRunner`; Cersei handles execution **within** an agent
 - Horizon reset = discard current Cersei agent instance, construct fresh one with seed context only
 - Cersei's JSONL session files are an implementation detail; Falanx's audit trail is a separate concern at the run level
 - `cersei-mcp` is the client; Falanx serve mode will expose its own MCP **server** — these are distinct
