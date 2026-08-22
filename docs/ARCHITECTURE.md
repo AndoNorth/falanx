@@ -215,7 +215,7 @@ Falanx writes a **JSONL audit trail** for every run. The session file captures w
 | `AgentStarted` | stage_id, agent_name, iteration | Individual agent invocation begins |
 | `AgentCompleted` | stage_id, agent_name, turns_used, output, iteration | Agent completed; output is extracted (json_object/json_array/text) |
 | `StageCompleted` | stage_id, output_as, result, iteration | Stage complete; result available in TemplateContext |
-| `StageSkipped` | stage_id, condition, iteration | Stage skipped due to predicate (e.g. `score_below_target`) |
+| `StageSkipped` | stage_id, condition, iteration | Stage skipped due to predicate (e.g. `score_meets_target`) |
 | `HorizonReset` | iteration | Context reset triggered by plateau or degradation |
 | `RunCompleted` | iterations, summary | Run complete; summary is final TemplateContext state |
 | `RunFailed` | reason | Run failed; reason describes the error |
@@ -278,7 +278,7 @@ stages:
     agent: review
     output_format: json_array
     output_as: review_result
-    skip_if: score_below_target
+    skip_if: score_meets_target
 
   - id: rewrite
     agent: rewrite
@@ -397,6 +397,9 @@ Environment variables:
 | `FALANX_DRY_RUN` | Mock provider, no LLM calls |
 | `FALANX_SESSION_DIR` | Session storage path |
 | `FALANX_MAX_DIFF_CHARS` | Diff size cap |
+| `FALANX_MAX_ITER` | Default loop iteration cap (`loop.max_iterations` override) |
+| `FALANX_TARGET_SCORE` | Default target score (`loop.target_score` override) |
+| `FALANX_PLATEAU_THRESHOLD` | Default plateau threshold (`loop.plateau_threshold` override) |
 
 ---
 

@@ -140,11 +140,13 @@ No `ANTHROPIC_API_KEY` needed for Ollama models. `FALANX_MAX_DIFF_CHARS=6000` he
 |---|---|---|
 | `FALANX_MODEL` | `anthropic/claude-opus-4-7` | Model ID (`anthropic/...`, `ollama/...`) |
 | `ANTHROPIC_API_KEY` | — | Required for Anthropic models |
+| `FALANX_BASE_URL` | — | Provider URL override (e.g. Ollama's host) |
 | `FALANX_DRY_RUN` | `false` | Use mock provider, no LLM calls |
 | `FALANX_MAX_DIFF_CHARS` | `20000` | Truncate large diffs before sending |
 | `FALANX_SESSION_DIR` | `~/.falanx/sessions` | Where JSONL audit trails are written |
 | `FALANX_MAX_ITER` | `3` | Default loop iteration cap |
 | `FALANX_TARGET_SCORE` | `4.5` | Default target score for exit |
+| `FALANX_PLATEAU_THRESHOLD` | `0.1` | Default plateau threshold for horizon reset |
 
 ---
 
