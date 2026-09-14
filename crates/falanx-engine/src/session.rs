@@ -213,7 +213,10 @@ impl Session {
             });
         }
 
-        results.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        // sort_by_key + Reverse instead of sort_by(|a, b| b.cmp(a)) - same result, but clippy
+        // (as of this toolchain) flags the comparator form since a key extractor lets it use a
+        // faster sort that only computes the key once per element instead of on every comparison.
+        results.sort_by_key(|s| std::cmp::Reverse(s.started_at));
         Ok(results)
     }
 }
