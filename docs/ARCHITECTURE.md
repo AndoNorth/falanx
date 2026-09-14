@@ -291,6 +291,8 @@ Agents are directories containing:
 - `system.md` — system prompt for Cersei
 - `prompt.md` — minijinja template, receives TemplateContext variables
 - `config.yaml` — `kind` (cersei, default) and `max_turns`
+- `output.schema.json` — optional JSON Schema for the agent's expected response shape; when
+  present, the response is validated and retried on mismatch before reaching TemplateContext
 
 User-defined workflows and agents override defaults. See below for agent definition details.
 
@@ -329,10 +331,12 @@ agents/
     system.md
     prompt.md
     config.yaml
+    output.schema.json
   review/
     system.md
     prompt.md
     config.yaml
+    output.schema.json
 ```
 
 `config.yaml` example:
@@ -415,6 +419,7 @@ falanx-engine/src/
     mod.rs        — AgentDef, AgentKind
     loader.rs     — Load AgentDef from filesystem
     run.rs        — Run single agent, extract output
+    contract.rs   — Output-contract enforcement: prompt wrapping, reasoning-strip, schema validation
   orchestrator/
     mod.rs        — Entry point, RunConfig, RunResult
     horizon.rs    — Horizon reset detection

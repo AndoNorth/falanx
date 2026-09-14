@@ -6,4 +6,4 @@ SCORES:
 DIFF:
 {{ diff }}
 
-Focus your critique on the lowest-scoring categories. For each issue identify the exact location, what is wrong and why it matters, and how to fix it.
+Focus your critique on the lowest-scoring categories. For each issue identify the exact location, what is wrong and why it matters, and how to fix it. Return an empty array if no issues are found.

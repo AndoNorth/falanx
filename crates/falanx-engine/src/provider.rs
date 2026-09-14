@@ -49,7 +49,9 @@ impl MockProvider {
             return if user_text.contains("Validation errors from the previous attempt") {
                 r#"{"score": 4, "reasoning": "fixed after retry"}"#
             } else {
-                "not json at all"
+                // Well-formed JSON that violates the schema (string where an integer is
+                // expected) - this exercises validate_output's retry path, not extract_output's.
+                r#"{"score": "high"}"#
             };
         }
 

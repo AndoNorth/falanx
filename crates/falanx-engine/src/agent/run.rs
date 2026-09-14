@@ -104,10 +104,10 @@ pub async fn run_agent(
         });
         if attempt == MAX_OUTPUT_RETRIES {
             anyhow::bail!(
-                "agent '{}' failed schema validation after {} attempt(s): {:?}",
+                "agent '{}' failed its output contract after {} attempt(s): {:?}",
                 def.name,
                 attempt + 1,
-                errors
+                diagnostics
             );
         }
         prompt = contract::wrap_prompt_with_validation_errors(&prompt, &errors);
