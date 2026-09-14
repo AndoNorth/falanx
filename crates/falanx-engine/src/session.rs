@@ -43,6 +43,16 @@ pub enum SessionEvent {
         output: serde_json::Value,
         iteration: u32,
     },
+    // Recorded once per failed validation attempt, before the (successful) AgentCompleted line
+    // that follows once the agent eventually passes or the stage gives up. Lets a session file
+    // show exactly what a local model got wrong and how many tries it took to fix it.
+    AgentOutputInvalid {
+        stage_id: String,
+        agent_name: String,
+        iteration: u32,
+        attempt: u32,
+        errors: Vec<String>,
+    },
     StageCompleted {
         stage_id: String,
         output_as: String,
@@ -367,6 +377,26 @@ mod tests {
         assert_eq!(v["type"], "agent_completed");
         assert_eq!(v["agent_name"], "score_readability");
         assert_eq!(v["output"]["score"], 4);
+    }
+
+    #[test]
+    fn agent_output_invalid_serialises() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path(), "t").unwrap();
+        session
+            .append(SessionEvent::AgentOutputInvalid {
+                stage_id: "score".into(),
+                agent_name: "score_readability".into(),
+                iteration: 0,
+                attempt: 0,
+                errors: vec!["score must be an integer".into()],
+            })
+            .unwrap();
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["type"], "agent_output_invalid");
+        assert_eq!(v["attempt"], 0);
+        assert_eq!(v["errors"][0], "score must be an integer");
     }
 
     #[test]

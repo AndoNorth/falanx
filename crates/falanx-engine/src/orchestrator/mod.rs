@@ -80,7 +80,17 @@ async fn run_with_workflow_and_agents(
     })?;
 
     let runner = WorkflowRunner::new(&workflow, falanx_cfg, &session, agents_dir);
-    runner.run(&diff_text).await
+    match runner.run(&diff_text).await {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            // Best-effort: if the JSONL write itself fails, the original run error is still
+            // what gets returned - we don't want a logging failure to mask the real one.
+            let _ = session.append(SessionEvent::RunFailed {
+                reason: err.to_string(),
+            });
+            Err(err)
+        }
+    }
 }
 
 fn resolve_agents_dir() -> std::path::PathBuf {
@@ -178,5 +188,54 @@ stages:
 
         assert_eq!(result.iterations, 1);
         assert!(!result.session_id.0.is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_appends_run_failed_event_on_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dry_cfg(dir.path());
+
+        let f = dir.path().join("test.rs");
+        std::fs::write(&f, "fn main() {}").unwrap();
+
+        // Deliberately empty - no agent directories exist here, so load_from_dir inside
+        // run_stage will fail and the run should end in an Err.
+        let agents_dir = dir.path().join(".falanx/agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        let session = Session::new(&cfg.session.dir, "failure-test").unwrap();
+        let session_path = session.path().to_path_buf();
+        let run_cfg = RunConfig {
+            target: ReviewTarget::File(f),
+            loop_cfg: cfg.loop_cfg.clone(),
+            session,
+            agents_dir: Some(agents_dir.clone()),
+        };
+
+        let result = run_with_workflow(
+            run_cfg,
+            &cfg,
+            r#"
+loop:
+  max_iterations: 1
+  target_score: 5.0
+  plateau_threshold: 0.1
+stages:
+  - id: score
+    agents: [score_readability]
+    output_format: json_object
+    output_as: score_result
+"#,
+            &agents_dir,
+        )
+        .await;
+
+        assert!(result.is_err());
+
+        let content = std::fs::read_to_string(&session_path).unwrap();
+        assert!(
+            content.contains("run_failed"),
+            "expected a run_failed event in the session file, got: {content}"
+        );
     }
 }
