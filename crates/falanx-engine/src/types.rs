@@ -8,6 +8,10 @@ pub struct AgentRunResult {
     pub raw_output: String,
     pub extracted: serde_json::Value,
     pub turns_used: u32,
+    // Empty for a schema-less agent (the contract loop never ran) or an agent that validated on
+    // its first try. One entry per failed attempt otherwise - workflow/runner.rs turns each into
+    // one SessionEvent::AgentOutputInvalid line before the final AgentCompleted line.
+    pub retry_diagnostics: Vec<crate::agent::contract::RetryDiagnostic>,
 }
 
 #[cfg(test)]
