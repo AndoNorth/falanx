@@ -25,11 +25,17 @@ Ollama exposes two HTTP surfaces:
 | `/v1/chat/completions` (OpenAI-compatible) | **Yes** — via `cersei-provider`'s `openai.rs` | `think` is a no-op here. Reasoning models emit their chain-of-thought inline in `content` (often wrapped in `<think>...</think>` or similar), mixed with the final answer. |
 
 Falanx goes through cersei's OpenAI-compatible provider, so **the native `think` toggle is not
-reachable from falanx today**. This is the same shape of gap as `CompletionRequest.options`
-never reaching the wire (see the output-contract spec) — cersei's OpenAI-compat request builder
-only forwards `model`, `messages`, `system`, `tools`, `temperature`. Reaching the native endpoint
-would mean bypassing cersei's `Provider` trait for Ollama specifically, which is out of scope
-for v1.
+reachable from falanx today**. Reaching the native endpoint would mean bypassing cersei's
+`Provider` trait for Ollama specifically, which is out of scope for v1.
+
+**Update (cersei 0.2.6):** `CompletionRequest.options` is no longer a dead field — the
+OpenAI-compat request builder now forwards a `reasoning_effort` option
+(`cersei-provider/src/openai.rs::reasoning_effort_for`) into the outgoing request body. This
+does *not* close the gap above for Ollama, though: the forwarding is hardcoded to models whose
+name starts with `gpt-5`, `o1`, or `o3` — OpenAI's own reasoning models — so an Ollama model name
+never matches and the option is silently dropped regardless of what's in `options`. Still no
+schema/`response_format` forwarding of any kind. Revisit if cersei ever widens
+`reasoning_effort_for`'s model gate to include Ollama's reasoning models.
 
 ## What This Means for Agent Output
 
