@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["original", "revised", "issue_ref"],
+    "properties": {
+      "original": { "type": "string" },
+      "revised": { "type": "string" },
+      "issue_ref": { "type": "string" }
+    }
+  }
+}

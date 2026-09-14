@@ -6,7 +6,4 @@ SCORES:
 DIFF:
 {{ diff }}
 
-Focus your critique on the lowest-scoring categories. For each issue identify the exact location, what is wrong and why it matters, and how to fix it.
-
-Respond with only a JSON array — no preamble, no explanation, no other text. Return [] if no issues found:
-[{"location": "file:line", "problem": "description", "fix": "specific fix"}]
+Focus your critique on the lowest-scoring categories. For each issue identify the exact location, what is wrong and why it matters, and how to fix it. Return an empty array if no issues are found.

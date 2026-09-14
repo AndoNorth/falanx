@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["score", "reasoning"],
+  "properties": {
+    "score": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "reasoning": { "type": "string", "maxLength": 600 }
+  }
+}

@@ -149,6 +149,19 @@ impl<'a> WorkflowRunner<'a> {
                     )
                 })?;
 
+            // One line per failed attempt, in order, so a session file reads as a timeline:
+            // however many agent_output_invalid lines, then the agent_completed line that
+            // followed once it either passed validation or the loop gave up trying.
+            for diag in &result.retry_diagnostics {
+                self.session.append(SessionEvent::AgentOutputInvalid {
+                    stage_id: stage_cfg.id.clone(),
+                    agent_name: agent_name.clone(),
+                    iteration: ctx.loop_iteration,
+                    attempt: diag.attempt,
+                    errors: diag.errors.clone(),
+                })?;
+            }
+
             self.session.append(SessionEvent::AgentCompleted {
                 stage_id: stage_cfg.id.clone(),
                 agent_name: agent_name.clone(),
@@ -357,5 +370,45 @@ stages:
             "rewrite stage missing: {:?}",
             stage_ids
         );
+    }
+
+    #[tokio::test]
+    async fn runner_logs_agent_output_invalid_then_completes_after_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dry_cfg();
+        let session = Session::new(dir.path(), "retry-test").unwrap();
+
+        let yaml = r#"
+loop:
+  max_iterations: 1
+  target_score: 5.0
+  plateau_threshold: 0.1
+stages:
+  - id: score
+    agents: [flaky]
+    output_format: json_object
+    output_as: score_result
+"#;
+        let workflow = WorkflowConfig::from_yaml(yaml).unwrap();
+
+        let agents_dir = dir.path().join("agents");
+        let agent_dir = agents_dir.join("flaky");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(agent_dir.join("system.md"), "You are a flaky test agent.").unwrap();
+        std::fs::write(agent_dir.join("prompt.md"), "score: {{ diff }}").unwrap();
+        std::fs::write(agent_dir.join("config.yaml"), "kind: cersei\nmax_turns: 1").unwrap();
+        std::fs::write(
+            agent_dir.join("output.schema.json"),
+            r#"{"type": "object", "required": ["score", "reasoning"], "properties": {"score": {"type": "integer"}, "reasoning": {"type": "string"}}}"#,
+        )
+        .unwrap();
+
+        let runner = WorkflowRunner::new(&workflow, &cfg, &session, &agents_dir);
+        let result = runner.run("fn foo() {}").await.unwrap();
+        assert_eq!(result.iterations, 1);
+
+        let content = std::fs::read_to_string(session.path()).unwrap();
+        assert!(content.contains("agent_output_invalid"));
+        assert!(content.contains("agent_completed"));
     }
 }

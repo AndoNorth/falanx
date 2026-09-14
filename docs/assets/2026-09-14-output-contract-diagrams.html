@@ -1,0 +1,416 @@
+<title>Falanx Pipeline & Output Contract</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, .badge) { overflow-wrap: anywhere; }
+  :where(svg) { max-width: 100%; height: auto; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+</style>
+
+<div data-theme="luxury" class="min-h-screen bg-base-100 text-base-content">
+<main class="mx-auto max-w-6xl p-6 lg:p-10 space-y-12">
+
+  <header class="space-y-2">
+    <h1 class="text-3xl font-bold">Falanx: pipeline topology + the output-contract mechanism</h1>
+    <p class="text-base-content/70 max-w-3xl">
+      Two diagrams for the brainstorm. Diagram 1 is the whole system as it exists today
+      (verified against <code class="mono">workflow/runner.rs</code>,
+      <code class="mono">orchestrator/</code>, <code class="mono">session.rs</code>).
+      Diagram 2 zooms into one agent invocation and shows the output-contract mechanism
+      we designed — not yet built — replacing the current copy-pasted "respond with only
+      JSON" prose in every <code class="mono">prompt.md</code>.
+    </p>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- DIAGRAM 1 — CURRENT PIPELINE                                  -->
+  <!-- ============================================================ -->
+  <section class="space-y-4">
+    <div>
+      <h2 class="text-xl font-semibold">Diagram 1 — Current pipeline (whole system)</h2>
+      <p class="text-base-content/70 text-sm max-w-2xl">What happens between <code class="mono">falanx run --diff</code> and a finished session file, today.</p>
+    </div>
+
+    <div data-theme="light" class="rounded-box border border-base-content/10 bg-base-100 shadow p-4 overflow-x-auto">
+      <svg viewBox="0 0 1200 620" width="100%" role="img" aria-labelledby="d1-title d1-desc">
+        <title id="d1-title">Falanx pipeline: CLI to session audit trail</title>
+        <desc id="d1-desc">CLI triggers WorkflowRunner, which loops stages inside a TemplateContext, checks exit conditions, and writes JSONL session events throughout.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="fill-current text-base-content/50" />
+          </marker>
+          <marker id="arrowDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="fill-current text-warning" />
+          </marker>
+        </defs>
+
+        <!-- CLI -->
+        <g id="node-cli" class="text-base-content">
+          <title>crates/falanx/src/main.rs — cmd_run</title>
+          <rect x="30" y="30" width="200" height="56" rx="8" class="fill-current/10 stroke-current" />
+          <text x="130" y="53" text-anchor="middle" class="fill-current text-[13px] font-semibold">falanx run --diff</text>
+          <text x="130" y="71" text-anchor="middle" class="fill-current/60 text-[11px] mono">main.rs cmd_run</text>
+        </g>
+        <line x1="130" y1="86" x2="130" y2="116" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+
+        <!-- WorkflowRunner outer loop box -->
+        <g id="node-runner-loop">
+          <title>workflow/runner.rs — WorkflowRunner::run, outer loop</title>
+          <rect x="30" y="120" width="880" height="380" rx="10" class="fill-none stroke-current text-primary/60" stroke-dasharray="6 4" />
+          <text x="46" y="142" class="fill-current text-primary text-[12px] font-semibold">WorkflowRunner::run — outer loop (one pass = one iteration)</text>
+        </g>
+
+        <!-- TemplateContext -->
+        <g id="node-ctx">
+          <title>workflow/context.rs — TemplateContext, reset to {diff} every outer iteration</title>
+          <rect x="60" y="158" width="220" height="50" rx="8" class="fill-current/10 stroke-current text-secondary" />
+          <text x="170" y="178" text-anchor="middle" class="fill-current text-secondary text-[12px] font-semibold">TemplateContext</text>
+          <text x="170" y="195" text-anchor="middle" class="fill-current text-secondary/70 text-[10px] mono">seeded: { diff }</text>
+        </g>
+        <line x1="280" y1="183" x2="330" y2="183" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+
+        <!-- Score stage -->
+        <g id="node-score">
+          <title>stage: score — 5 parallel score_* agents, output_as: score_result</title>
+          <rect x="335" y="158" width="230" height="50" rx="8" class="fill-current/10 stroke-current" />
+          <text x="450" y="176" text-anchor="middle" class="fill-current text-[12px] font-semibold">score stage</text>
+          <text x="450" y="193" text-anchor="middle" class="fill-current/60 text-[10px] mono">5× score_* agents → score_result</text>
+        </g>
+        <line x1="565" y1="183" x2="615" y2="183" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+
+        <!-- Review stage -->
+        <g id="node-review">
+          <title>stage: review — skip_if score_meets_target</title>
+          <rect x="620" y="158" width="250" height="50" rx="8" class="fill-current/10 stroke-current" />
+          <text x="745" y="176" text-anchor="middle" class="fill-current text-[12px] font-semibold">review stage</text>
+          <text x="745" y="193" text-anchor="middle" class="fill-current/60 text-[10px] mono">skip_if: score_meets_target</text>
+        </g>
+
+        <!-- down to rewrite -->
+        <line x1="745" y1="208" x2="745" y2="238" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+        <g id="node-rewrite">
+          <title>stage: rewrite — skip_if no_review_issues</title>
+          <rect x="620" y="242" width="250" height="50" rx="8" class="fill-current/10 stroke-current" />
+          <text x="745" y="260" text-anchor="middle" class="fill-current text-[12px] font-semibold">rewrite stage</text>
+          <text x="745" y="277" text-anchor="middle" class="fill-current/60 text-[10px] mono">skip_if: no_review_issues</text>
+        </g>
+
+        <!-- ctx accumulation note -->
+        <g id="node-ctx-grows">
+          <title>TemplateContext accumulates each stage's output_as key</title>
+          <rect x="335" y="242" width="230" height="70" rx="8" class="fill-current/5 stroke-current text-secondary/50" stroke-dasharray="3 3" />
+          <text x="450" y="262" text-anchor="middle" class="fill-current text-secondary text-[11px] font-semibold">ctx accumulates ↓</text>
+          <text x="450" y="278" text-anchor="middle" class="fill-current text-secondary/70 text-[10px] mono">+ score_result</text>
+          <text x="450" y="292" text-anchor="middle" class="fill-current text-secondary/70 text-[10px] mono">+ review_result</text>
+          <text x="450" y="306" text-anchor="middle" class="fill-current text-secondary/70 text-[10px] mono">+ rewrite_result</text>
+        </g>
+        <line x1="450" y1="208" x2="450" y2="242" class="stroke-current text-secondary/40" marker-end="url(#arrow)" />
+
+        <!-- composite check -->
+        <line x1="745" y1="292" x2="745" y2="330" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+        <g id="node-composite">
+          <title>workflow/runner.rs composite_from_ctx — average of score_result scores</title>
+          <polygon points="745,326 845,366 745,406 645,366" class="fill-current/10 stroke-current text-accent" />
+          <text x="745" y="362" text-anchor="middle" class="fill-current text-accent text-[11px] font-semibold">composite</text>
+          <text x="745" y="377" text-anchor="middle" class="fill-current text-accent text-[11px] font-semibold">≥ target?</text>
+        </g>
+
+        <!-- exit yes -->
+        <line x1="845" y1="366" x2="890" y2="366" class="stroke-current text-success" marker-end="url(#arrow)" />
+        <text x="850" y="356" class="fill-current text-success text-[10px] font-semibold">yes</text>
+        <g id="node-exit-target">
+          <title>Loop exits: target_score reached</title>
+          <rect x="892" y="342" width="80" height="48" rx="8" class="fill-current/10 stroke-current text-success" />
+          <text x="932" y="362" text-anchor="middle" class="fill-current text-success text-[10px] font-semibold">exit:</text>
+          <text x="932" y="376" text-anchor="middle" class="fill-current text-success text-[10px] font-semibold">target hit</text>
+        </g>
+
+        <!-- exit no -> checks -->
+        <line x1="745" y1="406" x2="745" y2="440" class="stroke-current text-warning" marker-end="url(#arrow)" />
+        <text x="756" y="426" class="fill-current text-warning text-[10px] font-semibold">no</text>
+
+        <g id="node-maxiter">
+          <title>Loop exits: max_iterations reached — the only mandatory guard</title>
+          <rect x="330" y="444" width="200" height="50" rx="8" class="fill-current/10 stroke-current text-error" />
+          <text x="430" y="463" text-anchor="middle" class="fill-current text-error text-[11px] font-semibold">max_iterations?</text>
+          <text x="430" y="480" text-anchor="middle" class="fill-current text-error/70 text-[10px] mono">exit if hit — mandatory</text>
+        </g>
+
+        <g id="node-plateau">
+          <title>Loop detects plateau: score delta below plateau_threshold, twice in a row</title>
+          <rect x="545" y="444" width="200" height="50" rx="8" class="fill-current/10 stroke-current text-warning" />
+          <text x="645" y="463" text-anchor="middle" class="fill-current text-warning text-[11px] font-semibold">plateau_streak ≥ 2?</text>
+          <text x="645" y="480" text-anchor="middle" class="fill-current text-warning/70 text-[10px] mono">score delta &lt; threshold</text>
+        </g>
+
+        <g id="node-horizon">
+          <title>orchestrator/horizon.rs — discard live agent context, reseed TemplateContext to {diff}, loop continues</title>
+          <rect x="760" y="444" width="220" height="50" rx="8" class="fill-current/10 stroke-current text-warning" />
+          <text x="870" y="463" text-anchor="middle" class="fill-current text-warning text-[11px] font-semibold">HorizonReset</text>
+          <text x="870" y="480" text-anchor="middle" class="fill-current text-warning/70 text-[10px] mono">fresh context, ctx → {diff}</text>
+        </g>
+
+        <line x1="745" y1="444" x2="745" y2="420" class="stroke-current text-base-content/30" />
+        <line x1="430" y1="440" x2="430" y2="420" class="stroke-current text-base-content/0" />
+        <line x1="530" y1="469" x2="545" y2="469" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+        <line x1="745" y1="469" x2="760" y2="469" class="stroke-current text-base-content/40" marker-end="url(#arrow)" />
+        <line x1="430" y1="440" x2="430" y2="410" class="stroke-current text-base-content/0" />
+
+        <!-- back-edge: horizon reset loops back to ctx -->
+        <path d="M 870 494 C 870 540 170 540 170 212" fill="none" class="stroke-current text-warning/70" stroke-dasharray="5 3" marker-end="url(#arrowDash)" />
+        <text x="500" y="530" text-anchor="middle" class="fill-current text-warning text-[10px]">loop continues → next iteration, TemplateContext reseeded to {diff} only</text>
+
+        <!-- max iter exit -->
+        <line x1="430" y1="494" x2="430" y2="520" class="stroke-current text-error" marker-end="url(#arrow)" />
+        <g id="node-exit-maxiter">
+          <title>Loop exits: max iterations ceiling reached</title>
+          <rect x="330" y="524" width="200" height="40" rx="8" class="fill-current/10 stroke-current text-error" />
+          <text x="430" y="549" text-anchor="middle" class="fill-current text-error text-[11px] font-semibold">exit: max iterations</text>
+        </g>
+
+        <!-- session sidebar -->
+        <g id="node-session">
+          <title>session.rs — JSONL audit trail, written throughout the run</title>
+          <rect x="950" y="120" width="220" height="380" rx="10" class="fill-current/5 stroke-current text-info/60" />
+          <text x="1060" y="142" text-anchor="middle" class="fill-current text-info text-[12px] font-semibold">session.jsonl (audit trail)</text>
+          <text x="965" y="168" class="fill-current text-info/80 text-[10px] mono">RunStarted</text>
+          <text x="965" y="186" class="fill-current text-info/80 text-[10px] mono">StageStarted</text>
+          <text x="965" y="204" class="fill-current text-info/80 text-[10px] mono">AgentStarted</text>
+          <text x="965" y="222" class="fill-current text-info/80 text-[10px] mono">AgentCompleted</text>
+          <text x="965" y="240" class="fill-current text-info/80 text-[10px] mono">StageCompleted</text>
+          <text x="965" y="258" class="fill-current text-info/80 text-[10px] mono">StageSkipped</text>
+          <text x="965" y="276" class="fill-current text-info/80 text-[10px] mono">HorizonReset</text>
+          <text x="965" y="294" class="fill-current text-info/80 text-[10px] mono">RunCompleted / RunFailed</text>
+          <text x="965" y="320" class="fill-current text-info/60 text-[10px]">written by workflow/runner.rs</text>
+          <text x="965" y="336" class="fill-current text-info/60 text-[10px]">and orchestrator/horizon.rs</text>
+          <text x="965" y="360" class="fill-current text-info/60 text-[10px]">one event per lifecycle step —</text>
+          <text x="965" y="376" class="fill-current text-info/60 text-[10px]">this is what "trust the output,</text>
+          <text x="965" y="392" class="fill-current text-info/60 text-[10px]">not just accept it" means.</text>
+        </g>
+        <line x1="870" y1="183" x2="945" y2="180" class="stroke-current text-info/40" stroke-dasharray="3 3" />
+      </svg>
+    </div>
+
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="card bg-base-200/60 border border-base-content/10">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm">Stage gating today</h3>
+          <p class="text-xs text-base-content/70"><code class="mono">skip_if</code> is a closed Rust enum
+          (<code class="mono">ScoreMeetsTarget</code>, <code class="mono">NoReviewIssues</code>) —
+          <code class="mono">workflow/stage.rs</code>. No custom predicates, no human checkpoint.</p>
+        </div>
+      </div>
+      <div class="card bg-base-200/60 border border-base-content/10">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm">Loop exit, three conditions</h3>
+          <p class="text-xs text-base-content/70">Target score, max iterations (mandatory), plateau →
+          horizon reset is a recovery attempt, not an exit — <code class="mono">workflow/runner.rs::run</code>.</p>
+        </div>
+      </div>
+      <div class="card bg-base-200/60 border border-base-content/10">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm">What's missing here</h3>
+          <p class="text-xs text-base-content/70"><code class="mono">falanx serve</code> is a stub
+          (<code class="mono">main.rs:85</code>) — CLI mode is the only path that actually runs today.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ============================================================ -->
+  <!-- DIAGRAM 2 — OUTPUT CONTRACT (NEW)                              -->
+  <!-- ============================================================ -->
+  <section class="space-y-4">
+    <div>
+      <h2 class="text-xl font-semibold">Diagram 2 — Inside one <code class="mono">run_agent</code> call: the output contract <span class="badge badge-warning badge-soft align-middle">new / not built</span></h2>
+      <p class="text-base-content/70 text-sm max-w-2xl">
+        One box from Diagram 1 ("score stage", "review stage", ...) actually runs one agent at a
+        time through this. Everything inside the dashed boundary is the contract mechanism we
+        just designed — it wraps whichever <code class="mono">AgentKind</code> executes, so it
+        stays valid even if a future kind isn't a one-shot Cersei call.
+      </p>
+    </div>
+
+    <div data-theme="light" class="rounded-box border border-base-content/10 bg-base-100 shadow p-4 overflow-x-auto">
+      <svg viewBox="0 0 1180 760" width="100%" role="img" aria-labelledby="d2-title d2-desc">
+        <title id="d2-title">Output contract: render, wrap with schema, dispatch, validate, retry</title>
+        <desc id="d2-desc">A rendered prompt is wrapped with a schema instruction, dispatched to an AgentKind implementation, the response is extracted and validated against the schema, retried on failure, then handed back to workflow/runner.rs which logs the outcome and inserts it into TemplateContext for the orchestrator to evaluate.</desc>
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="fill-current text-base-content/50" />
+          </marker>
+          <marker id="arrowErr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="fill-current text-error" />
+          </marker>
+        </defs>
+
+        <!-- inputs -->
+        <g id="node-promptmd">
+          <title>agent dir: prompt.md, rendered via minijinja against TemplateContext</title>
+          <rect x="20" y="20" width="220" height="56" rx="8" class="fill-current/10 stroke-current" />
+          <text x="130" y="43" text-anchor="middle" class="fill-current text-[12px] font-semibold">prompt.md</text>
+          <text x="130" y="60" text-anchor="middle" class="fill-current/60 text-[10px] mono">ctx.render() — minijinja</text>
+        </g>
+        <g id="node-schemafile">
+          <title>agent dir: output.schema.json — new, optional, loaded by agent/loader.rs into AgentDef.output_schema</title>
+          <rect x="20" y="96" width="220" height="56" rx="8" class="fill-current/10 stroke-current text-primary" />
+          <text x="130" y="119" text-anchor="middle" class="fill-current text-primary text-[12px] font-semibold">output.schema.json</text>
+          <text x="130" y="136" text-anchor="middle" class="fill-current text-primary/70 text-[10px] mono">new · optional · loader.rs</text>
+        </g>
+
+        <line x1="240" y1="48" x2="290" y2="80" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+        <line x1="240" y1="124" x2="290" y2="90" class="stroke-current text-primary/50" marker-end="url(#arrow2)" />
+
+        <!-- contract boundary -->
+        <rect x="295" y="20" width="860" height="420" rx="12" class="fill-none stroke-current text-primary/60" stroke-dasharray="6 4" />
+        <text x="312" y="42" class="fill-current text-primary text-[12px] font-semibold">agent/contract.rs + agent/run.rs::run_agent — kind-agnostic contract boundary (new)</text>
+
+        <g id="node-wrap">
+          <title>agent/contract.rs::wrap_prompt_with_schema — one shared instruction block, replaces per-agent hand-typed JSON prose</title>
+          <rect x="320" y="60" width="220" height="60" rx="8" class="fill-current/10 stroke-current text-primary" />
+          <text x="430" y="84" text-anchor="middle" class="fill-current text-primary text-[12px] font-semibold">wrap_prompt_with_schema</text>
+          <text x="430" y="100" text-anchor="middle" class="fill-current text-primary/70 text-[10px] mono">one shared wrapper, not 7 copies</text>
+        </g>
+
+        <line x1="540" y1="90" x2="590" y2="90" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-dispatch">
+          <title>agent/run.rs — match def.kind: dispatches to the AgentKind implementation</title>
+          <rect x="595" y="55" width="240" height="70" rx="8" class="fill-current/10 stroke-current" />
+          <text x="715" y="76" text-anchor="middle" class="fill-current text-[12px] font-semibold">match def.kind { ... }</text>
+          <text x="715" y="92" text-anchor="middle" class="fill-current/60 text-[10px] mono">today: Cersei → run_cersei()</text>
+          <text x="715" y="107" text-anchor="middle" class="fill-current/50 text-[10px] mono">no tools / no sandbox — one-shot</text>
+        </g>
+
+        <g id="node-futurekind">
+          <title>Placeholder: a future AgentKind (e.g. a coding-agent-with-skills backend) plugs in here and still has to satisfy the same contract</title>
+          <rect x="855" y="55" width="270" height="70" rx="8" class="fill-none stroke-current text-base-content/30" stroke-dasharray="3 3" />
+          <text x="990" y="80" text-anchor="middle" class="fill-current text-base-content/50 text-[11px]">future AgentKind?</text>
+          <text x="990" y="96" text-anchor="middle" class="fill-current text-base-content/40 text-[10px]">e.g. coding-agent + skills</text>
+          <text x="990" y="112" text-anchor="middle" class="fill-current text-base-content/40 text-[10px]">— same contract still applies</text>
+        </g>
+        <line x1="835" y1="90" x2="850" y2="90" class="stroke-current text-base-content/25" marker-end="url(#arrow2)" stroke-dasharray="3 3" />
+
+        <line x1="715" y1="125" x2="715" y2="155" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-extract">
+          <title>agent/run.rs::extract_output — find first {..} or [..], parse as JSON (unchanged by this design)</title>
+          <rect x="595" y="160" width="240" height="56" rx="8" class="fill-current/10 stroke-current" />
+          <text x="715" y="183" text-anchor="middle" class="fill-current text-[12px] font-semibold">extract_output</text>
+          <text x="715" y="200" text-anchor="middle" class="fill-current/60 text-[10px] mono">raw text → serde_json::Value</text>
+        </g>
+
+        <line x1="715" y1="216" x2="715" y2="246" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-validate">
+          <title>agent/contract.rs::validate_output — checks the extracted Value against output_schema using the jsonschema crate</title>
+          <rect x="595" y="250" width="240" height="60" rx="8" class="fill-current/10 stroke-current text-primary" />
+          <text x="715" y="273" text-anchor="middle" class="fill-current text-primary text-[12px] font-semibold">validate_output</text>
+          <text x="715" y="290" text-anchor="middle" class="fill-current text-primary/70 text-[10px] mono">jsonschema crate (new dep)</text>
+        </g>
+
+        <line x1="715" y1="310" x2="715" y2="336" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <polygon points="715,332 785,368 715,404 645,368" class="fill-current/10 stroke-current text-accent" />
+        <text x="715" y="364" text-anchor="middle" class="fill-current text-accent text-[11px] font-semibold">valid?</text>
+        <text x="715" y="378" text-anchor="middle" class="fill-current text-accent/70 text-[9px]">(id: node-valid-check)</text>
+
+        <!-- retry loop back to dispatch -->
+        <path d="M 645 368 C 500 368 500 150 590 92" fill="none" class="stroke-current text-error" stroke-dasharray="5 3" marker-end="url(#arrowErr)" />
+        <text x="440" y="230" transform="rotate(-90 440 230)" text-anchor="middle" class="fill-current text-error text-[10px] font-semibold">no — append validation errors, retry</text>
+        <text x="470" y="415" class="fill-current text-error/80 text-[10px]">bounded: MAX_OUTPUT_RETRIES = 2 (3 attempts total) — recorded as retry_diagnostics</text>
+
+        <!-- valid -> continue -->
+        <line x1="785" y1="368" x2="900" y2="368" class="stroke-current text-success" marker-end="url(#arrow2)" />
+        <text x="800" y="358" class="fill-current text-success text-[10px] font-semibold">yes / retries exhausted</text>
+
+        <g id="node-result">
+          <title>AgentRunResult { extracted, retry_diagnostics } returned to workflow/runner.rs</title>
+          <rect x="905" y="340" width="220" height="56" rx="8" class="fill-current/10 stroke-current" />
+          <text x="1015" y="363" text-anchor="middle" class="fill-current text-[12px] font-semibold">AgentRunResult</text>
+          <text x="1015" y="380" text-anchor="middle" class="fill-current/60 text-[10px] mono">+ retry_diagnostics</text>
+        </g>
+
+        <!-- back into runner.rs, outside the contract boundary -->
+        <line x1="1015" y1="396" x2="1015" y2="450" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-events">
+          <title>workflow/runner.rs::run_stage — appends SessionEvent::AgentOutputInvalid per failed attempt, then AgentCompleted (new event variant, session.rs)</title>
+          <rect x="820" y="454" width="330" height="66" rx="8" class="fill-current/10 stroke-current text-info" />
+          <text x="985" y="476" text-anchor="middle" class="fill-current text-info text-[12px] font-semibold">runner.rs emits session events</text>
+          <text x="985" y="492" text-anchor="middle" class="fill-current text-info/70 text-[10px] mono">AgentOutputInvalid × failed attempts (new)</text>
+          <text x="985" y="507" text-anchor="middle" class="fill-current text-info/70 text-[10px] mono">then AgentCompleted (existing)</text>
+        </g>
+
+        <line x1="985" y1="520" x2="985" y2="550" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-synth">
+          <title>workflow/runner.rs::synthesise_runs — merges multi-agent stage outputs (e.g. 5 score agents) into one Value</title>
+          <rect x="820" y="554" width="330" height="50" rx="8" class="fill-current/10 stroke-current" />
+          <text x="985" y="574" text-anchor="middle" class="fill-current text-[12px] font-semibold">synthesise_runs</text>
+          <text x="985" y="590" text-anchor="middle" class="fill-current/60 text-[10px] mono">merges multi-agent stage output</text>
+        </g>
+
+        <line x1="985" y1="604" x2="985" y2="630" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+
+        <g id="node-ctxinsert">
+          <title>ctx.stages.insert(output_as, synthesised) — result now visible to later stages' prompt.md templates</title>
+          <rect x="820" y="634" width="330" height="50" rx="8" class="fill-current/10 stroke-current text-secondary" />
+          <text x="985" y="654" text-anchor="middle" class="fill-current text-secondary text-[12px] font-semibold">TemplateContext.stages[output_as]</text>
+          <text x="985" y="670" text-anchor="middle" class="fill-current text-secondary/70 text-[10px] mono">visible to the next stage's prompt.md</text>
+        </g>
+
+        <!-- orchestrator evaluates -->
+        <line x1="820" y1="659" x2="360" y2="659" class="stroke-current text-base-content/40" marker-end="url(#arrow2)" />
+        <g id="node-orch-eval">
+          <title>workflow/runner.rs::run (outer loop) — composite_from_ctx and skip_if predicates read the accumulated TemplateContext to gate the next stage or end the loop; see Diagram 1</title>
+          <rect x="60" y="620" width="300" height="80" rx="10" class="fill-current/10 stroke-current text-accent" />
+          <text x="210" y="644" text-anchor="middle" class="fill-current text-accent text-[12px] font-semibold">orchestrator gathers state</text>
+          <text x="210" y="661" text-anchor="middle" class="fill-current text-accent/70 text-[10px] mono">composite_from_ctx() / skip_if</text>
+          <text x="210" y="676" text-anchor="middle" class="fill-current text-accent/70 text-[10px] mono">over the accumulated TemplateContext</text>
+          <text x="210" y="692" text-anchor="middle" class="fill-current text-accent/60 text-[9px]">→ next stage, or loop exit (Diagram 1)</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div class="card bg-primary/10 border border-primary/30">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm text-primary">What's genuinely new</h3>
+          <ul class="text-xs text-base-content/70 list-disc pl-4 space-y-1">
+            <li><code class="mono">output.schema.json</code> per agent dir (optional)</li>
+            <li><code class="mono">agent/contract.rs</code>: wrap + validate</li>
+            <li><code class="mono">AgentDef.output_schema</code>, <code class="mono">AgentRunResult.retry_diagnostics</code></li>
+            <li><code class="mono">SessionEvent::AgentOutputInvalid</code></li>
+            <li><code class="mono">jsonschema</code> crate dependency</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card bg-base-200/60 border border-base-content/10">
+        <div class="card-body p-4">
+          <h3 class="card-title text-sm">What stays unchanged</h3>
+          <ul class="text-xs text-base-content/70 list-disc pl-4 space-y-1">
+            <li><code class="mono">extract_output</code> — still string-search JSON extraction</li>
+            <li><code class="mono">run_cersei</code> — still one-shot, no tools/sandbox</li>
+            <li><code class="mono">synthesise_runs</code>, <code class="mono">TemplateContext</code> shape</li>
+            <li>Cersei's own retry (transient provider errors only) — separate from this</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div role="alert" class="alert alert-warning alert-soft text-sm">
+      <span><strong>Open question, labeled for the review loop:</strong> structured-output pass-through to Ollama
+      (constrained decoding) is <em>not</em> reachable via cersei-provider — it drops
+      <code class="mono">CompletionRequest.options</code> before the HTTP call. This diagram shows the
+      prose+validate+retry path only. Confirm that's acceptable for v1 before the spec is written.</span>
+    </div>
+  </section>
+
+</main>
+</div>

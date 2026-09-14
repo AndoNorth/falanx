@@ -35,6 +35,26 @@ impl MockProvider {
             return Self::mock_patches_json();
         }
 
+        if system.contains("flaky test agent") {
+            // Simulates a model that ignores the schema on its first attempt and only complies
+            // once the contract wrapper appends validation feedback - lets tests in agent/run.rs
+            // exercise the real retry loop deterministically, with no real LLM involved.
+            let user_text = request
+                .messages
+                .iter()
+                .rev()
+                .find(|m| m.role == cersei_types::Role::User)
+                .and_then(|m| m.get_text())
+                .unwrap_or("");
+            return if user_text.contains("Validation errors from the previous attempt") {
+                r#"{"score": 4, "reasoning": "fixed after retry"}"#
+            } else {
+                // Well-formed JSON that violates the schema (string where an integer is
+                // expected) - this exercises validate_output's retry path, not extract_output's.
+                r#"{"score": "high"}"#
+            };
+        }
+
         // Legacy fallback
         let user_text = request
             .messages
