@@ -1,0 +1,48 @@
+name: CI
+
+# Mirrors the local git hooks in nix/rust.config.nix exactly: lint = the
+# pre-commit hooks (rustfmt, clippy), test/audit = the pre-push hooks (cargo
+# test, cargo audit). Same commands, same toolchain (rust-toolchain.toml via
+# the flake) in both places, so "passes locally" and "passes in CI" stay the
+# same claim.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - run: nix develop --command cargo fmt --check
+      - run: nix develop --command cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - run: nix develop --command cargo test --workspace
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # .cargo/audit.toml ignores advisories that are transitive through
+      # cersei's own dependency tree and not fixable from falanx's side -
+      # see that file for which ones and why.
+      - run: nix develop --command cargo audit
