@@ -1,0 +1,23 @@
+[advisories]
+# Transitive through cersei's HTTP client stack (reqwest's DNS/QUIC/TLS deps) -
+# not falanx's own dependency choice, and not fixable here without forking
+# cersei or waiting for it to bump its own pins upstream. Re-check this list
+# whenever cersei is bumped (see docs/CERSEI.md) - a version bump may resolve
+# some of these on its own, at which point drop the corresponding entry.
+ignore = [
+  # hickory-proto 0.25.2: NSEC3 closest-encloser proof enters unbounded loop
+  # on cross-zone responses. No fixed upgrade exists yet upstream at all.
+  "RUSTSEC-2026-0118",
+  # hickory-proto 0.25.2: O(n^2) name compression, CPU exhaustion. Fixed in
+  # >=0.26.1, but that bump belongs to cersei/reqwest, not falanx directly.
+  "RUSTSEC-2026-0119",
+  # quinn-proto 0.11.14: unbounded out-of-order stream reassembly, remote
+  # memory exhaustion (severity 7.5). Fixed in >=0.11.15 upstream.
+  "RUSTSEC-2026-0185",
+  # rustls 0.23.40: TLS 1.3 handshake messages accepted across encryption
+  # level boundaries (severity 5.3). Fixed in >=0.23.45 upstream.
+  "RUSTSEC-2026-0285",
+  # crossbeam-epoch 0.9.18: invalid pointer dereference in a Debug/Pointer
+  # fmt impl when the underlying pointer is already invalid. Fixed in >=0.9.20.
+  "RUSTSEC-2026-0204",
+]
