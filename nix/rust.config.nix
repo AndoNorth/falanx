@@ -37,6 +37,34 @@ in {
     language = "system";
   };
 
+  # Pre-push, not pre-commit: the full suite is too slow to run on every commit,
+  # and unlike fmt/clippy it needs the whole workspace to build, not just the
+  # files that changed. Mirrors crazy-train-code's `gotest` pre-push hook
+  # (nix/modules/backend.nix) — a dev-only safety net catching regressions
+  # before they leave the machine. There's no CI yet to catch this instead;
+  # once one lands, this comment should note which CI job makes it redundant
+  # (same rationale as gotest's own comment there).
+  pre-commit.settings.hooks.cargo-test = {
+    enable = true;
+    entry = "${pkgs.bash}/bin/bash -c 'export PATH=${devToolchain}/bin:$PATH; cargo test --workspace'";
+    files = "^crates/.*\\.rs$";
+    pass_filenames = false;
+    language = "system";
+    stages = ["pre-push"];
+  };
+
+  # Scoped to Cargo.toml/Cargo.lock, not \.rs$ like the hooks above - a new
+  # advisory can surface with no source change at all, but there's no point
+  # re-auditing on every push when dependencies haven't moved.
+  pre-commit.settings.hooks.cargo-audit = {
+    enable = true;
+    entry = "${pkgs.bash}/bin/bash -c 'export PATH=${devToolchain}/bin:${pkgs.cargo-audit}/bin:$PATH; cargo audit'";
+    files = "^(crates/.*/Cargo\\.toml|Cargo\\.lock)$";
+    pass_filenames = false;
+    language = "system";
+    stages = ["pre-push"];
+  };
+
   # CI-usable alternative to the rustfmt hook above: bare rustfmt per file,
   # no cargo workspace resolution needed (no network/registry access,
   # unlike `cargo fmt`/`cargo clippy` — see nix/modules/automation.nix in

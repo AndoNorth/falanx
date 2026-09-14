@@ -1,7 +1,7 @@
 ---
 status: approved
 date: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 issues: []
 scope: [agent, workflow, session]
 ---
@@ -50,12 +50,16 @@ current brace-search extraction.
 ## Non-Goals
 
 - **Provider-level structured-output enforcement** (Ollama's native `think` toggle, JSON-mode /
-  constrained decoding). Confirmed unreachable from falanx today: `cersei-provider`'s
-  OpenAI-compatible request builder (the path Ollama goes through) never forwards
-  `CompletionRequest.options`, and Ollama's `think` parameter only works on its native `/api/chat`
-  endpoint, which falanx doesn't call. See `docs/OLLAMA.md`. Enforcement here is
-  prose-plus-validation-plus-retry only; provider-level enforcement would require forking or
-  patching the pinned `cersei-provider = "0.1.9"` dependency, which is out of scope.
+  constrained decoding). Confirmed unreachable from falanx today: Ollama's `think` parameter only
+  works on its native `/api/chat` endpoint, which falanx doesn't call — `cersei-provider`'s
+  OpenAI-compatible request builder is the path Ollama goes through instead. As of `cersei` 0.2.6,
+  `CompletionRequest.options` is no longer a dead field (it now forwards a `reasoning_effort`
+  value), but that forwarding is hardcoded to OpenAI's own `gpt-5`/`o1`/`o3` model names and never
+  matches an Ollama model, so the gap for Ollama is unchanged; no `response_format`/schema
+  forwarding exists at all. See `docs/OLLAMA.md`. Enforcement here is
+  prose-plus-validation-plus-retry only; closing this gap for Ollama would require patching
+  `cersei-provider`'s model gate or bypassing its `Provider` trait for Ollama specifically, both
+  out of scope.
 - **Per-agent `max_tokens` tuning.** A quantized model doing inline reasoning could exhaust the
   current fixed 16384-token budget before reaching its JSON answer. Flagged as an open risk
   below, not designed here — orthogonal to the output-contract mechanism itself.
@@ -175,7 +179,9 @@ Follows the existing test style in this codebase — `#[test]` / `#[tokio::test]
 - `docs/OLLAMA.md` — native vs OpenAI-compatible endpoint split, `think` parameter limitation
 - `docs/assets/2026-09-14-output-contract-diagrams.html` — pipeline + contract
   diagrams referenced above
-- cersei source (pinned `0.1.9`, via cargo registry): `cersei-provider/src/openai.rs` (request
-  body construction — confirms `options` is never read), `cersei-provider/src/lib.rs`
+- cersei source (originally checked against `0.1.9`; re-verified against `0.2.6` after the
+  2026-09-15 dependency bump — see Open Questions): `cersei-provider/src/openai.rs` (request body
+  construction — as of 0.2.6, forwards a `reasoning_effort` option gated to `gpt-5`/`o1`/`o3`
+  model names only, still no forwarding reachable for Ollama), `cersei-provider/src/lib.rs`
   (`CompletionRequest`, `ProviderOptions`), `cersei-agent/src/runner.rs` (existing retry loop is
   transient-provider-error only, not output-validation)
