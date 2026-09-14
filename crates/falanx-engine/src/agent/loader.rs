@@ -26,12 +26,27 @@ pub fn load_from_dir(agents_base: &Path, name: &str) -> anyhow::Result<AgentDef>
     let config: AgentConfig = serde_yaml::from_str(&config_str)
         .map_err(|e| anyhow::anyhow!("agent '{}': invalid config.yaml: {}", name, e))?;
 
+    // output.schema.json is optional - unlike system.md/prompt.md/config.yaml, its absence
+    // is not an error. `Path::exists` plus an Option is simpler here than trying to distinguish
+    // "file missing" from "other io error" through the Result from read_to_string.
+    let output_schema = if dir.join("output.schema.json").exists() {
+        let raw = std::fs::read_to_string(dir.join("output.schema.json")).map_err(|e| {
+            anyhow::anyhow!("agent '{}': failed to read output.schema.json: {}", name, e)
+        })?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| anyhow::anyhow!("agent '{}': invalid output.schema.json: {}", name, e))?;
+        Some(parsed)
+    } else {
+        None
+    };
+
     Ok(AgentDef {
         name: name.to_string(),
         kind: config.kind,
         system_prompt: system_prompt.trim().to_string(),
         prompt_template: prompt_template.trim().to_string(),
         max_turns: config.max_turns,
+        output_schema,
     })
 }
 
@@ -69,5 +84,40 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = load_from_dir(dir.path(), "nonexistent").unwrap_err();
         assert!(err.to_string().contains("nonexistent"));
+    }
+
+    #[test]
+    fn loads_agent_with_no_output_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_dir(dir.path(), "review", 2);
+        let def = load_from_dir(dir.path(), "review").unwrap();
+        // No output.schema.json was written for this fixture - the field must default to
+        // None rather than erroring, since existing custom --agents dirs never have this file.
+        assert!(def.output_schema.is_none());
+    }
+
+    #[test]
+    fn loads_agent_with_output_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent_dir = write_agent_dir(dir.path(), "score_readability", 1);
+        fs::write(
+            agent_dir.join("output.schema.json"),
+            r#"{"type": "object", "required": ["score"], "properties": {"score": {"type": "integer"}}}"#,
+        )
+        .unwrap();
+
+        let def = load_from_dir(dir.path(), "score_readability").unwrap();
+        let schema = def.output_schema.expect("schema should have loaded");
+        assert_eq!(schema["type"], "object");
+    }
+
+    #[test]
+    fn errors_on_malformed_output_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent_dir = write_agent_dir(dir.path(), "review", 1);
+        fs::write(agent_dir.join("output.schema.json"), "{ not valid json").unwrap();
+
+        let err = load_from_dir(dir.path(), "review").unwrap_err();
+        assert!(err.to_string().contains("output.schema.json"));
     }
 }
