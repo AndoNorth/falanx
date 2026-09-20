@@ -348,12 +348,14 @@ max_turns: 1
 
 The prompt template receives `TemplateContext` variables via minijinja:
 
+{% raw %}
 ```
 {{ diff }}
 {{ score_result }}
 {{ score_result | selectattr("agent", "equalto", "score_security") | first }}
 {{ review_result | tojson }}
 ```
+{% endraw %}
 
 ### Agent Output Extraction
 

@@ -1,0 +1,15 @@
+theme: jekyll-theme-cayman
+title: Falanx
+description: Automated code review for merge request diffs - scored, critiqued, and optionally rewritten, with a full audit trail.
+show_downloads: false
+
+exclude:
+  - crates
+  - nix
+  - .worktrees
+  - target
+  - AGENTS.md
+  - docs/superpowers
+  - docs/CERSEI.md
+  - docs/SANDCASTLE.md
+  - docs/NOMISTAKES.md
