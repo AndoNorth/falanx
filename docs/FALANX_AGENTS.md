@@ -46,14 +46,17 @@ Agents live in `.falanx/agents/<agent_name>/`:
 
 **Template context variables** passed to prompt.md:
 
+{% raw %}
 - `{{ diff }}` — The target code diff
 - `{{ score_result }}` — Array of scoring agent outputs (available in review stage)
 - `{{ review_result }}` — Array of review issues (available in rewrite stage)
+{% endraw %}
 
 ---
 
 ## Default Agents
 
+{% raw %}
 | Agent | Purpose | max_turns | Template Variables | Output Format |
 |---|---|---|---|---|
 | `score_readability` | Readability score 1–5 | 1 | `{{ diff }}` | `{"score": N, "reasoning": "..."}` |
@@ -63,6 +66,7 @@ Agents live in `.falanx/agents/<agent_name>/`:
 | `score_security` | Security score 1–5 | 1 | `{{ diff }}` | `{"score": N, "reasoning": "..."}` |
 | `review` | Critique issues from diff + scores | 1 | `{{ diff }}`<br>`{{ score_result }}` | `[{"location": "...", "issue": "...", "fix": "..."}]` |
 | `rewrite` | Apply fixes from critique | 3 | `{{ diff }}`<br>`{{ review_result }}` | `[{"location": "...", "change": "..."}]` |
+{% endraw %}
 
 **Scoring agents:**
 - Receive the diff only
